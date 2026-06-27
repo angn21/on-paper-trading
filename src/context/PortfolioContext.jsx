@@ -2,29 +2,19 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import { priceOptionPosition } from '../lib/blackScholes';
 import { shouldFillOrder } from '../lib/orders';
 import { applyStockTrade, revertStockTransaction } from '../lib/positions';
+import {
+  STARTING_CASH,
+  defaultPortfolioState,
+  loadLocalPortfolio,
+  saveLocalPortfolio,
+  sanitizePortfolioState,
+} from '../lib/portfolioStorage';
+import { PortfolioSync } from '../hooks/usePortfolioSync';
 
-const STORAGE_KEY = 'on-paper-portfolio-v2';
-const STARTING_CASH = 100_000;
-
-const defaultState = {
-  cash: STARTING_CASH,
-  positions: {},
-  options: [],
-  watchlist: [],
-  transactions: [],
-  portfolioHistory: [],
-  pendingOrders: [],
-  benchmarkHistory: [],
-};
+const defaultState = defaultPortfolioState;
 
 function loadState() {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY) || localStorage.getItem('on-paper-portfolio-v1');
-    if (!raw) return defaultState;
-    return { ...defaultState, ...JSON.parse(raw) };
-  } catch {
-    return defaultState;
-  }
+  return loadLocalPortfolio();
 }
 
 function makeId() {
@@ -45,10 +35,24 @@ export function PortfolioProvider({ children }) {
   const [volatility, setVolatilityState] = useState({});
   const [priceHistory, setPriceHistory] = useState({});
   const lastSnapshotRef = useRef(0);
+  const skipLocalSaveRef = useRef(false);
 
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    if (skipLocalSaveRef.current) {
+      skipLocalSaveRef.current = false;
+      return;
+    }
+    saveLocalPortfolio(state);
   }, [state]);
+
+  const replacePortfolioState = useCallback((next) => {
+    skipLocalSaveRef.current = true;
+    const merged = sanitizePortfolioState(next);
+    if (!merged.portfolioHistory.length) {
+      merged.portfolioHistory = [{ ts: Date.now(), totalValue: merged.cash }];
+    }
+    setState(merged);
+  }, []);
 
   const setQuote = useCallback((symbol, quote) => {
     const upper = symbol.toUpperCase();
@@ -509,6 +513,7 @@ export function PortfolioProvider({ children }) {
   const value = {
     ...state,
     ...computed,
+    portfolioState: state,
     quotes,
     volatility,
     priceHistory,
@@ -527,9 +532,15 @@ export function PortfolioProvider({ children }) {
     sellOption,
     snapshotPortfolio,
     resetPortfolio,
+    replacePortfolioState,
   };
 
-  return <PortfolioContext.Provider value={value}>{children}</PortfolioContext.Provider>;
+  return (
+    <PortfolioContext.Provider value={value}>
+      <PortfolioSync />
+      {children}
+    </PortfolioContext.Provider>
+  );
 }
 
 function seededFallbackPrice(symbol) {

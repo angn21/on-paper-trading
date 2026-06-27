@@ -5,10 +5,16 @@ export default function handler() {
     (process.env.FINNHUB_API_KEY || process.env.VITE_FINNHUB_API_KEY || '').trim(),
   );
   const twelvedata = Boolean((process.env.TWELVE_DATA_API_KEY || '').trim());
+  const supabase = Boolean(
+    process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY,
+  );
+  const session = Boolean((process.env.SESSION_SECRET || '').trim().length >= 16);
 
   return Response.json({
     marketData: finnhub || twelvedata ? 'configured' : 'missing',
     finnhub,
     twelvedata,
+    supabase,
+    accounts: supabase && session ? 'configured' : 'missing',
   });
 }

@@ -1,5 +1,6 @@
 import { useEffect } from 'react';
 import { Link, NavLink, Outlet } from 'react-router-dom';
+import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
 import { useKeyboardShortcuts } from '../hooks/useKeyboardShortcuts';
 import { marketData } from '../marketData/marketData';
@@ -8,6 +9,7 @@ import './Layout.css';
 
 export default function Layout() {
   const { theme, toggleTheme } = useTheme();
+  const { user } = useAuth();
   useKeyboardShortcuts();
 
   useEffect(() => {
@@ -28,6 +30,9 @@ export default function Layout() {
             </button>
             <NavLink to="/search" className="search-link">
               Search
+            </NavLink>
+            <NavLink to="/account" className="account-link">
+              {user ? user.username : 'Account'}
             </NavLink>
           </div>
         </div>

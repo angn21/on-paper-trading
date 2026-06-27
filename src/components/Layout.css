@@ -46,6 +46,20 @@
   font-size: 0.95rem;
 }
 
+.account-link {
+  color: var(--text-muted);
+  font-weight: 600;
+  font-size: 0.85rem;
+  max-width: 88px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.account-link.active {
+  color: var(--accent);
+}
+
 .bottom-nav {
   position: fixed;
   left: 50%;

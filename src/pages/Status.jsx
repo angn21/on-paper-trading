@@ -37,6 +37,16 @@ export default function Status() {
               <span>Twelve Data proxy</span>
               <span>{health.twelvedata ? '✓' : '✗'}</span>
             </li>
+            <li>
+              <span>Cloud accounts (Supabase)</span>
+              <span>{health.supabase ? '✓' : '✗'}</span>
+            </li>
+            <li>
+              <span>Account sync</span>
+              <span className={health.accounts === 'configured' ? 'positive' : 'negative'}>
+                {health.accounts}
+              </span>
+            </li>
           </ul>
         )}
       </section>
