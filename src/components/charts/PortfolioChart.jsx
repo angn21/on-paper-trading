@@ -10,6 +10,7 @@ import {
 import { usePortfolio } from '../../hooks/usePortfolio';
 import {
   computeChartYDomain,
+  chartTooltipProps,
   formatChartTick,
   formatChartTooltipLabel,
   formatPortfolioAxisValue,
@@ -99,8 +100,7 @@ export default function PortfolioChart() {
               width={52}
             />
             <Tooltip
-              contentStyle={{ background: '#16161D', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 12 }}
-              labelStyle={{ color: '#8E8E93' }}
+              {...chartTooltipProps}
               labelFormatter={formatChartTooltipLabel}
               formatter={(value) => [formatCurrency(value), 'Value']}
             />

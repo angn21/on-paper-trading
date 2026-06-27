@@ -51,16 +51,28 @@ export function sanitizeMarketSnapshot(raw) {
 }
 
 export function buildMarketSnapshot(state, quotes = {}, volatility = {}) {
-  const snapshot = { quotes: {}, volatility: {} };
+  const existing = sanitizeMarketSnapshot(state?.marketSnapshot);
+  const snapshot = {
+    quotes: { ...existing.quotes },
+    volatility: { ...existing.volatility },
+  };
 
   symbolsForPortfolio(state).forEach((symbol) => {
     const upper = symbol.toUpperCase();
-    if (quotes[upper]?.c) {
+    const live = quotes[upper];
+
+    if (live?.c && !live._simulated) {
       snapshot.quotes[upper] = {
-        c: quotes[upper].c,
-        dp: quotes[upper].dp ?? 0,
+        c: live.c,
+        dp: live.dp ?? 0,
+      };
+    } else if (!snapshot.quotes[upper] && live?.c) {
+      snapshot.quotes[upper] = {
+        c: live.c,
+        dp: live.dp ?? 0,
       };
     }
+
     if (volatility[upper]) {
       snapshot.volatility[upper] = volatility[upper];
     }
@@ -134,14 +146,22 @@ export function pickSyncPayload(state) {
 
 export function resolveUnderlyingPrice(symbol, liveQuotes, marketSnapshot, fallbackPrice) {
   const upper = symbol.toUpperCase();
-  if (liveQuotes[upper]?.c) return liveQuotes[upper].c;
-  if (marketSnapshot?.quotes?.[upper]?.c) return marketSnapshot.quotes[upper].c;
+  const snapPrice = marketSnapshot?.quotes?.[upper]?.c;
+
+  // Portfolio symbols synced to cloud — shared marks beat device-local quotes.
+  if (snapPrice) return snapPrice;
+
+  const live = liveQuotes[upper];
+  if (live?.c) return live.c;
+
   return fallbackPrice(upper);
 }
 
 export function resolveVolatility(symbol, liveVolatility, marketSnapshot) {
   const upper = symbol.toUpperCase();
-  if (liveVolatility[upper]) return liveVolatility[upper];
+
   if (marketSnapshot?.volatility?.[upper]) return marketSnapshot.volatility[upper];
+  if (liveVolatility[upper]) return liveVolatility[upper];
+
   return 0.3;
 }

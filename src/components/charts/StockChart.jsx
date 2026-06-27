@@ -8,6 +8,7 @@ import {
   XAxis,
   YAxis,
 } from 'recharts';
+import { chartTooltipProps } from '../../lib/chartLabels';
 import { usePortfolio } from '../../hooks/usePortfolio';
 import { marketData } from '../../marketData/marketData';
 import { formatChartLabel, formatCurrency } from '../../lib/formatters';
@@ -193,8 +194,7 @@ export default function StockChart({ symbol, livePrice = null }) {
                   width={52}
                 />
                 <Tooltip
-                  contentStyle={{ background: '#16161D', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 12 }}
-                  labelStyle={{ color: '#8E8E93' }}
+                  {...chartTooltipProps}
                   formatter={(value) => [formatCurrency(value), 'Price']}
                 />
                 <Area type="monotone" dataKey="price" stroke="#1ED760" fill="url(#stockFill)" strokeWidth={2} dot={false} />

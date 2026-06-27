@@ -87,3 +87,13 @@ export function formatPercentAxisValue(value, span) {
   if (span < 1.5) return `${value.toFixed(1)}%`;
   return `${value.toFixed(0)}%`;
 }
+
+export const chartTooltipProps = {
+  contentStyle: {
+    background: '#16161D',
+    border: '1px solid rgba(255,255,255,0.08)',
+    borderRadius: 12,
+  },
+  labelStyle: { color: '#8E8E93' },
+  itemStyle: { color: '#E5E5EA' },
+};

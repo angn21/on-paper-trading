@@ -11,19 +11,35 @@ import TradePanel from '../components/TradePanel';
 import WhatIfCalculator from '../components/WhatIfCalculator';
 import { marketData } from '../marketData/marketData';
 import { usePortfolio } from '../hooks/usePortfolio';
+import { resolveUnderlyingPrice } from '../lib/portfolioStorage';
 import { getSector } from '../lib/sectors';
 import { formatCurrency, formatPercent, plClass } from '../lib/formatters';
 
-function quoteFromContext(quotes, marketSnapshot, symbol) {
-  const live = quotes[symbol];
-  if (live?.c) return live;
+function seededFallbackPrice(symbol) {
+  let hash = 0;
+  for (let i = 0; i < symbol.length; i += 1) {
+    hash = (hash << 5) - hash + symbol.charCodeAt(i);
+    hash |= 0;
+  }
+  return 20 + (Math.abs(hash) % 480);
+}
 
-  const snap = marketSnapshot?.quotes?.[symbol];
-  if (snap?.c) {
-    return { c: snap.c, d: 0, dp: snap.dp ?? 0, pc: snap.c };
+function buildDisplayQuote(symbol, quotes, marketSnapshot) {
+  const upper = symbol.toUpperCase();
+  const price = resolveUnderlyingPrice(upper, quotes, marketSnapshot, seededFallbackPrice);
+  const live = quotes[upper];
+  const snap = marketSnapshot?.quotes?.[upper];
+
+  if (live?.c && !snap?.c) {
+    return live;
   }
 
-  return null;
+  return {
+    c: price,
+    d: live?.d ?? 0,
+    dp: snap?.dp ?? live?.dp ?? 0,
+    pc: live?.pc ?? price,
+  };
 }
 
 export default function StockDetail() {
@@ -42,36 +58,40 @@ export default function StockDetail() {
     setQuote,
     isQuoteRefreshPaused,
   } = usePortfolio();
-  const [quote, setLocalQuote] = useState(null);
+  const [liveQuote, setLiveQuote] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  const contextQuote = useMemo(
-    () => quoteFromContext(quotes, portfolioState.marketSnapshot, upper),
-    [quotes, portfolioState.marketSnapshot, upper],
+  const inPortfolioSnapshot = Boolean(portfolioState.marketSnapshot?.quotes?.[upper]?.c);
+
+  const displayQuote = useMemo(
+    () => buildDisplayQuote(upper, quotes, portfolioState.marketSnapshot),
+    [upper, quotes, portfolioState.marketSnapshot],
   );
 
   const isWatched = watchlist.includes(upper);
   const position = positions[upper];
   const symbolOrders = pendingOrders.filter((o) => o.symbol === upper);
   const sector = getSector(upper);
-  const displayQuote = quote || contextQuote;
 
   useEffect(() => {
-    if (contextQuote?.c) {
-      setLocalQuote(contextQuote);
+    if (inPortfolioSnapshot) {
       setLoading(false);
+      return undefined;
     }
 
-    if (isQuoteRefreshPaused()) return undefined;
+    if (isQuoteRefreshPaused()) {
+      setLoading(false);
+      return undefined;
+    }
 
     let cancelled = false;
-    if (!contextQuote?.c) setLoading(true);
+    setLoading(true);
 
     marketData
       .getQuote(upper)
       .then((data) => {
         if (!cancelled) {
-          setLocalQuote(data);
+          setLiveQuote(data);
           setQuote(upper, data);
         }
       })
@@ -82,7 +102,9 @@ export default function StockDetail() {
     return () => {
       cancelled = true;
     };
-  }, [contextQuote, isQuoteRefreshPaused, setQuote, upper]);
+  }, [inPortfolioSnapshot, isQuoteRefreshPaused, setQuote, upper]);
+
+  const headerQuote = inPortfolioSnapshot ? displayQuote : (liveQuote || displayQuote);
 
   return (
     <div className="section-gap" style={{ paddingTop: 16 }}>
@@ -91,17 +113,23 @@ export default function StockDetail() {
       <ApiBanner />
       <OfflineBanner />
 
+      {inPortfolioSnapshot && (
+        <div className="banner banner-info" style={{ marginBottom: 0 }}>
+          Price and option premiums use your synced portfolio marks so they match across devices.
+        </div>
+      )}
+
       <section className="card hero-card">
         <div className="stock-hero-header">
           <div>
             <div className="stat-label">{upper} · {sector}</div>
-            {loading && !displayQuote?.c ? (
+            {loading && !headerQuote?.c ? (
               <div className="skeleton" style={{ width: 160, height: 36, marginTop: 8 }} />
             ) : (
               <>
-                <div className="hero-value">{formatCurrency(displayQuote?.c)}</div>
-                <div className={`hero-pl tabular ${plClass(displayQuote?.d)}`}>
-                  {formatCurrency(displayQuote?.d)} ({formatPercent(displayQuote?.dp)}) today
+                <div className="hero-value">{formatCurrency(headerQuote?.c)}</div>
+                <div className={`hero-pl tabular ${plClass(headerQuote?.d)}`}>
+                  {formatCurrency(headerQuote?.d)} ({formatPercent(headerQuote?.dp)}) today
                 </div>
               </>
             )}
@@ -136,16 +164,16 @@ export default function StockDetail() {
 
       {tab === 'chart' ? (
         <>
-          <StockChart symbol={upper} livePrice={displayQuote?.c} />
-          <StockPositionCard position={position} quote={displayQuote} symbol={upper} />
+          <StockChart symbol={upper} livePrice={headerQuote?.c} />
+          <StockPositionCard position={position} quote={headerQuote} symbol={upper} />
           <WhatIfCalculator
             symbol={upper}
             shares={position?.shares}
             avgCost={position?.avgCost}
-            currentPrice={displayQuote?.c}
+            currentPrice={headerQuote?.c}
           />
           <PendingOrders orders={symbolOrders} />
-          <TradePanel symbol={upper} price={displayQuote?.c} />
+          <TradePanel symbol={upper} price={headerQuote?.c} />
           <StockNews symbol={upper} />
         </>
       ) : (

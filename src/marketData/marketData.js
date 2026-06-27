@@ -131,6 +131,7 @@ function simulatedQuote(symbol) {
     o: Number((previousClose * 1.002).toFixed(2)),
     pc: Number(previousClose.toFixed(2)),
     t: Math.floor(Date.now() / 1000),
+    _simulated: true,
   };
 }
 
@@ -335,7 +336,7 @@ async function liveQuote(symbol) {
   }
 
   setCache(cacheKey, data, getQuoteCacheTTL(session));
-  return data;
+  return { ...data, _simulated: false };
 }
 
 async function twelveDataCandles(symbol, range) {
@@ -462,7 +463,7 @@ async function withFallback(liveFn, simFn, cacheKey) {
     const stale = getStale(cacheKey);
     if (stale) {
       switchToSimulated(error.message);
-      return stale;
+      return { ...stale, _simulated: true };
     }
     switchToSimulated(error.message);
     return simFn();

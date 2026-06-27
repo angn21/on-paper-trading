@@ -9,6 +9,7 @@ import {
 import { useMemo } from 'react';
 import {
   computeChartYDomain,
+  chartTooltipProps,
   formatChartTick,
   formatChartTooltipLabel,
   formatPercentAxisValue,
@@ -55,19 +56,22 @@ export default function BenchmarkChart({ portfolioHistory, benchmarkHistory }) {
               type="number"
               domain={['dataMin', 'dataMax']}
               tickFormatter={(ts) => formatChartTick(ts, data, 'M')}
-              tick={{ fontSize: 10 }}
-              stroke="var(--text-muted)"
+              tick={{ fill: '#8E8E93', fontSize: 11 }}
+              axisLine={false}
+              tickLine={false}
             />
             <YAxis
               domain={yDomain}
               tickFormatter={(v) => formatPercentAxisValue(v, percentSpan)}
-              tick={{ fontSize: 10 }}
-              stroke="var(--text-muted)"
+              tick={{ fill: '#8E8E93', fontSize: 11 }}
+              axisLine={false}
+              tickLine={false}
               width={48}
             />
             <Tooltip
+              {...chartTooltipProps}
               labelFormatter={formatChartTooltipLabel}
-              formatter={(v) => `${Number(v).toFixed(2)}%`}
+              formatter={(value, name) => [`${Number(value).toFixed(2)}%`, name]}
             />
             <Line type="monotone" dataKey="portfolio" stroke="var(--accent)" dot={false} strokeWidth={2} name="Portfolio" />
             <Line type="monotone" dataKey="spy" stroke="#888" dot={false} strokeWidth={1.5} name="SPY" strokeDasharray="4 4" />

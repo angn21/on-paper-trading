@@ -86,6 +86,13 @@ export function PortfolioProvider({ children }) {
     setState(merged);
   }, []);
 
+  const mergeMarketSnapshot = useCallback((snapshot) => {
+    setState((prev) => ({
+      ...prev,
+      marketSnapshot: sanitizePortfolioState({ marketSnapshot: snapshot }).marketSnapshot,
+    }));
+  }, []);
+
   const invalidateMarketQuotes = useCallback(() => {
     setQuotes({});
   }, []);
@@ -580,6 +587,7 @@ export function PortfolioProvider({ children }) {
     resetPortfolio,
     replacePortfolioState,
     invalidateMarketQuotes,
+    mergeMarketSnapshot,
     pauseQuoteRefresh,
     isQuoteRefreshPaused,
     resumeQuoteRefresh,
