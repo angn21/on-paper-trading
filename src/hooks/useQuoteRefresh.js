@@ -3,7 +3,7 @@ import { marketData } from '../marketData/marketData';
 import { usePortfolioContext } from '../context/PortfolioContext';
 
 export function useQuoteRefresh() {
-  const { positions, options, watchlist, setQuote } = usePortfolioContext();
+  const { positions, options, watchlist, setQuote, setVolatility } = usePortfolioContext();
 
   useEffect(() => {
     const symbols = new Set([
@@ -20,10 +20,16 @@ export function useQuoteRefresh() {
       await Promise.all(
         [...symbols].map(async (symbol) => {
           try {
-            const quote = await marketData.getQuote(symbol);
-            if (!cancelled) setQuote(symbol, quote);
+            const [quote, sigma] = await Promise.all([
+              marketData.getQuote(symbol),
+              marketData.getVolatility(symbol),
+            ]);
+            if (!cancelled) {
+              setQuote(symbol, quote);
+              setVolatility(symbol, sigma);
+            }
           } catch {
-            // Individual quote failures are handled in marketData fallback.
+            // Individual failures are handled in marketData fallback.
           }
         }),
       );
@@ -35,5 +41,5 @@ export function useQuoteRefresh() {
       cancelled = true;
       clearInterval(interval);
     };
-  }, [options, positions, watchlist, setQuote]);
+  }, [options, positions, watchlist, setQuote, setVolatility]);
 }

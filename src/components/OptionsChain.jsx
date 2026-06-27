@@ -1,18 +1,44 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { generateOptionsChain } from '../lib/blackScholes';
+import { formatVolatilityPercent } from '../lib/volatility';
+import { marketData } from '../marketData/marketData';
 import { usePortfolio } from '../hooks/usePortfolio';
 import { formatCurrency } from '../lib/formatters';
 import OptionsTradePanel from './OptionsTradePanel';
 
 export default function OptionsChain({ symbol, underlyingPrice }) {
+  const { volatility, setVolatility } = usePortfolio();
+  const upper = symbol?.toUpperCase();
+  const [sigma, setSigma] = useState(volatility[upper] ?? 0.3);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    if (volatility[upper]) {
+      setSigma(volatility[upper]);
+      return undefined;
+    }
+
+    marketData.getVolatility(upper).then((value) => {
+      if (!cancelled) {
+        setSigma(value);
+        setVolatility(upper, value);
+      }
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [setVolatility, upper, volatility]);
+
+  const chain = useMemo(
+    () => generateOptionsChain(symbol, underlyingPrice, sigma),
+    [symbol, underlyingPrice, sigma],
+  );
+
   const [type, setType] = useState('call');
   const [expiry, setExpiry] = useState('');
   const [selected, setSelected] = useState(null);
-
-  const chain = useMemo(
-    () => generateOptionsChain(symbol, underlyingPrice),
-    [symbol, underlyingPrice],
-  );
 
   const expiries = chain.map((item) => item.expiry);
   const activeExpiry = expiry || expiries[0] || '';
@@ -22,7 +48,8 @@ export default function OptionsChain({ symbol, underlyingPrice }) {
   return (
     <div className="section-gap">
       <div className="banner banner-warning">
-        Option premiums are model-derived (Black-Scholes), not live market quotes.
+        Option premiums are model-derived (Black-Scholes) using {formatVolatilityPercent(sigma)}{' '}
+        30-day realized volatility — not live option quotes.
       </div>
 
       <div className="card">
@@ -75,7 +102,7 @@ export default function OptionsChain({ symbol, underlyingPrice }) {
         ))}
       </div>
 
-      {selected && <OptionsTradePanel contract={selected} />}
+      {selected && <OptionsTradePanel contract={selected} sigma={sigma} />}
     </div>
   );
 }

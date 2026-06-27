@@ -6,6 +6,8 @@
  */
 
 import { getCachedCandles, pruneCandleCache, setCachedCandles } from './candleCache.js';
+import { getCachedVolatility, setCachedVolatility } from './volatilityCache.js';
+import { DEFAULT_SIGMA, realizedVolatility } from '../lib/volatility.js';
 
 const FINNHUB_API = '/api/finnhub';
 const TWELVE_DATA_API = '/api/twelvedata';
@@ -320,6 +322,41 @@ async function twelveDataCandles(symbol, range) {
   return parsed;
 }
 
+async function estimateVolatility(symbol) {
+  const upper = symbol.toUpperCase();
+  const cached = getCachedVolatility(upper);
+  if (cached != null) return cached;
+
+  for (const range of ['W', 'M']) {
+    const candles = getCachedCandles(upper, range);
+    if (candles?.c?.length >= 10) {
+      const sigma = realizedVolatility(candles.c.slice(-30));
+      setCachedVolatility(upper, sigma);
+      return sigma;
+    }
+  }
+
+  try {
+    const data = await twelveDataFetch({
+      symbol: upper,
+      interval: '1day',
+      outputsize: 30,
+      order: 'ASC',
+    });
+
+    if (data.status === 'ok' && data.values?.length >= 10) {
+      const closes = [...data.values].reverse().map((bar) => Number(bar.close));
+      const sigma = realizedVolatility(closes);
+      setCachedVolatility(upper, sigma);
+      return sigma;
+    }
+  } catch {
+    // Fall back to default below.
+  }
+
+  return DEFAULT_SIGMA;
+}
+
 async function liveMarketStatus() {
   const cacheKey = 'market-status:US';
   const cached = getCached(cacheKey);
@@ -434,6 +471,15 @@ export const marketData = {
       const stale = getCachedCandles(upper, range);
       if (stale) return stale;
       return approximateCandles(upper, range);
+    }
+  },
+
+  /** 30-day realized volatility from daily closes (cached 24h). */
+  async getVolatility(symbol) {
+    try {
+      return await estimateVolatility(symbol.toUpperCase());
+    } catch {
+      return DEFAULT_SIGMA;
     }
   },
 

@@ -41,6 +41,7 @@ export function PortfolioProvider({ children }) {
     return loaded;
   });
   const [quotes, setQuotes] = useState({});
+  const [volatility, setVolatilityState] = useState({});
 
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
@@ -48,6 +49,10 @@ export function PortfolioProvider({ children }) {
 
   const setQuote = useCallback((symbol, quote) => {
     setQuotes((prev) => ({ ...prev, [symbol.toUpperCase()]: quote }));
+  }, []);
+
+  const setVolatility = useCallback((symbol, sigma) => {
+    setVolatilityState((prev) => ({ ...prev, [symbol.toUpperCase()]: sigma }));
   }, []);
 
   const toggleWatchlist = useCallback((symbol) => {
@@ -324,6 +329,7 @@ export function PortfolioProvider({ children }) {
   const resetPortfolio = useCallback(() => {
     setState(defaultState);
     setQuotes({});
+    setVolatilityState({});
   }, []);
 
   const computed = useMemo(() => {
@@ -345,7 +351,8 @@ export function PortfolioProvider({ children }) {
 
     const optionPositions = state.options.map((position) => {
       const underlying = quotes[position.symbol]?.c ?? seededFallbackPrice(position.symbol);
-      const pricing = priceOptionPosition(position, underlying);
+      const sigma = volatility[position.symbol] ?? 0.3;
+      const pricing = priceOptionPosition(position, underlying, sigma);
       return {
         ...position,
         underlying,
@@ -369,13 +376,15 @@ export function PortfolioProvider({ children }) {
       optionsPL,
       totalPL: stockPL + optionsPL,
     };
-  }, [quotes, state]);
+  }, [quotes, state, volatility]);
 
   const value = {
     ...state,
     ...computed,
     quotes,
+    volatility,
     setQuote,
+    setVolatility,
     toggleWatchlist,
     buyStock,
     sellStock,
