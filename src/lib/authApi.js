@@ -75,7 +75,12 @@ export async function saveRemotePortfolio(data) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ data }),
   });
-  if (response.status === 401) return false;
-  if (!response.ok) throw new Error('Could not save cloud portfolio.');
-  return true;
+  if (response.status === 401) {
+    throw new Error('Not signed in — sign in again to sync.');
+  }
+  const result = await parseJson(response);
+  if (!response.ok) {
+    throw new Error(result.error || 'Could not save cloud portfolio.');
+  }
+  return result;
 }

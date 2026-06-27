@@ -9,7 +9,6 @@ import {
   saveLocalPortfolio,
   sanitizePortfolioState,
 } from '../lib/portfolioStorage';
-import { PortfolioSync } from '../hooks/usePortfolioSync';
 
 const defaultState = defaultPortfolioState;
 
@@ -35,22 +34,17 @@ export function PortfolioProvider({ children }) {
   const [volatility, setVolatilityState] = useState({});
   const [priceHistory, setPriceHistory] = useState({});
   const lastSnapshotRef = useRef(0);
-  const skipLocalSaveRef = useRef(false);
 
   useEffect(() => {
-    if (skipLocalSaveRef.current) {
-      skipLocalSaveRef.current = false;
-      return;
-    }
     saveLocalPortfolio(state);
   }, [state]);
 
   const replacePortfolioState = useCallback((next) => {
-    skipLocalSaveRef.current = true;
     const merged = sanitizePortfolioState(next);
     if (!merged.portfolioHistory.length) {
       merged.portfolioHistory = [{ ts: Date.now(), totalValue: merged.cash }];
     }
+    saveLocalPortfolio(merged);
     setState(merged);
   }, []);
 
@@ -535,12 +529,7 @@ export function PortfolioProvider({ children }) {
     replacePortfolioState,
   };
 
-  return (
-    <PortfolioContext.Provider value={value}>
-      <PortfolioSync />
-      {children}
-    </PortfolioContext.Provider>
-  );
+  return <PortfolioContext.Provider value={value}>{children}</PortfolioContext.Provider>;
 }
 
 function seededFallbackPrice(symbol) {

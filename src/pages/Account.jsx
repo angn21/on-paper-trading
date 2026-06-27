@@ -1,20 +1,28 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { usePortfolioSync } from '../context/PortfolioSyncContext';
 import {
   hasPortfolioActivity,
   loadLocalPortfolio,
   pickSyncPayload,
 } from '../lib/portfolioStorage';
 
+function formatCloudTime(iso) {
+  if (!iso) return 'Never';
+  return new Date(iso).toLocaleString();
+}
+
 export default function Account() {
   const { user, loading, register, login, logout } = useAuth();
+  const { syncNow, cloudUpdatedAt, syncMessage, syncReady } = usePortfolioSync();
   const [mode, setMode] = useState('login');
   const [username, setUsername] = useState('');
   const [pin, setPin] = useState('');
   const [importLocal, setImportLocal] = useState(true);
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [syncing, setSyncing] = useState(false);
 
   const localPortfolio = loadLocalPortfolio();
   const canImport = hasPortfolioActivity(localPortfolio);
@@ -41,6 +49,18 @@ export default function Account() {
     }
   }
 
+  async function handleSyncNow() {
+    setSyncing(true);
+    setError('');
+    try {
+      await syncNow();
+    } catch (err) {
+      setError(err.message || 'Sync failed.');
+    } finally {
+      setSyncing(false);
+    }
+  }
+
   if (loading) {
     return (
       <div className="section-gap" style={{ paddingTop: 16 }}>
@@ -55,19 +75,43 @@ export default function Account() {
         <section className="card">
           <h1 style={{ margin: '0 0 8px', fontSize: '1.4rem' }}>Account</h1>
           <p style={{ color: 'var(--text-muted)', marginTop: 0 }}>
-            Signed in as <strong>{user.username}</strong>. Your portfolio syncs to the cloud automatically (~2s after changes).
+            Signed in as <strong>{user.username}</strong>
           </p>
-          <button type="button" className="btn btn-ghost" onClick={() => logout()}>
-            Sign out
-          </button>
+
+          <div className="sync-status">
+            <div>
+              <div className="stat-label">Last cloud save</div>
+              <div className="tabular">{formatCloudTime(cloudUpdatedAt)}</div>
+            </div>
+            <div>
+              <div className="stat-label">Sync status</div>
+              <div>{syncReady ? (syncMessage || 'Ready') : 'Loading…'}</div>
+            </div>
+          </div>
+
+          <div className="actions-row" style={{ marginTop: 16 }}>
+            <button
+              type="button"
+              className="btn btn-primary"
+              onClick={handleSyncNow}
+              disabled={syncing || !syncReady}
+            >
+              {syncing ? 'Syncing…' : 'Sync now'}
+            </button>
+            <button type="button" className="btn btn-ghost" onClick={() => logout()}>
+              Sign out
+            </button>
+          </div>
+
+          {error && <div className="trade-error" style={{ marginTop: 12 }}>{error}</div>}
         </section>
 
         <section className="card">
           <h2 className="card-title">How sync works</h2>
           <ul className="account-notes">
-            <li>Changes save to the cloud ~2 seconds after you trade.</li>
-            <li>Sign in on another device with the same username + PIN to pick up where you left off.</li>
-            <li>This browser still keeps a local backup if you&apos;re offline.</li>
+            <li>Trades and watchlist sync to the cloud automatically.</li>
+            <li>On another device, sign in then tap <strong>Sync now</strong> if needed.</li>
+            <li>Switch away from the tab after trading to force a save.</li>
           </ul>
         </section>
       </div>

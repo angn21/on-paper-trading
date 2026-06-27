@@ -43,6 +43,8 @@ export function hasPortfolioActivity(state) {
     (state.transactions?.length ?? 0) > 0 ||
     Object.keys(state.positions || {}).length > 0 ||
     (state.options?.length ?? 0) > 0 ||
+    (state.watchlist?.length ?? 0) > 0 ||
+    (state.pendingOrders?.length ?? 0) > 0 ||
     state.cash !== STARTING_CASH
   );
 }

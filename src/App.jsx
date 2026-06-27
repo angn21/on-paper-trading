@@ -5,6 +5,7 @@ import ErrorBoundary from './components/ErrorBoundary';
 import Layout from './components/Layout';
 import { AuthProvider } from './context/AuthContext';
 import { PortfolioProvider } from './context/PortfolioContext';
+import { PortfolioSyncProvider } from './context/PortfolioSyncContext';
 import { ThemeProvider } from './context/ThemeContext';
 import { ToastProvider } from './context/ToastContext';
 import Account from './pages/Account';
@@ -20,7 +21,8 @@ export default function App() {
         <ToastProvider>
           <AuthProvider>
             <PortfolioProvider>
-              <BrowserRouter>
+              <PortfolioSyncProvider>
+                <BrowserRouter>
                 <Routes>
                   <Route element={<Layout />}>
                     <Route index element={<Dashboard />} />
@@ -31,7 +33,8 @@ export default function App() {
                     <Route path="*" element={<Navigate to="/" replace />} />
                   </Route>
                 </Routes>
-              </BrowserRouter>
+                </BrowserRouter>
+              </PortfolioSyncProvider>
             </PortfolioProvider>
           </AuthProvider>
         </ToastProvider>
