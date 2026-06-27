@@ -1,18 +1,18 @@
 /**
- * Massive.com options — Starter+ chain snapshot OR Basic (reference + EOD prev).
- * Free Options Basic: 5 API calls/min — snapshot endpoint is NOT included (403).
- * @see https://massive.com/docs/rest/options/snapshots/option-chain-snapshot
- * @see https://massive.com/docs/rest/options/contracts/all-contracts
- * @see https://massive.com/docs/rest/options/aggregates/previous-day-bar
+ * Massive.com options via Options Basic: reference contracts + EOD prev bar.
+ * Free tier: 5 API calls/min — burst up to 5, then wait for the rolling window.
  */
 
-import { parseMassiveOptionsChain } from '../lib/parseMassiveOptionsChain.js';
 import {
   buildChainFromReference,
   contractsForExpiry,
   listExpiriesFromContracts,
 } from '../lib/buildChainFromReference.js';
-import { getCachedOptionsChain, setCachedOptionsChain } from './optionsChainCache.js';
+import {
+  getCachedExpiryChain,
+  getCachedSymbolOptions,
+  setCachedExpiryChain,
+} from './optionsChainCache.js';
 import {
   getCachedOptionContracts,
   getCachedOptionEod,
@@ -21,11 +21,10 @@ import {
 } from './optionsEodCache.js';
 
 const MASSIVE_API = '/api/massive';
-const MIN_CALL_INTERVAL_MS = 12_500;
-const MAX_PREV_BATCH = 4;
+const RATE_WINDOW_MS = 60_000;
+const MAX_CALLS_PER_WINDOW = 5;
 
-let lastCallAt = 0;
-let callQueue = Promise.resolve();
+const recentCallTimes = [];
 
 function sleep(ms) {
   return new Promise((resolve) => {
@@ -33,41 +32,45 @@ function sleep(ms) {
   });
 }
 
-function enqueueMassiveCall(fn) {
-  callQueue = callQueue.then(async () => {
-    const wait = Math.max(0, MIN_CALL_INTERVAL_MS - (Date.now() - lastCallAt));
-    if (wait > 0) await sleep(wait);
-    lastCallAt = Date.now();
-    return fn();
-  });
-  return callQueue;
+async function acquireRateLimitSlot() {
+  while (true) {
+    const now = Date.now();
+    while (recentCallTimes.length && recentCallTimes[0] <= now - RATE_WINDOW_MS) {
+      recentCallTimes.shift();
+    }
+
+    if (recentCallTimes.length < MAX_CALLS_PER_WINDOW) {
+      recentCallTimes.push(now);
+      return;
+    }
+
+    const waitMs = recentCallTimes[0] + RATE_WINDOW_MS - now + 50;
+    await sleep(Math.max(waitMs, 100));
+  }
 }
 
-async function massiveFetch(path, params = {}, { allow403 = false } = {}) {
-  return enqueueMassiveCall(async () => {
-    const url = new URL(MASSIVE_API, window.location.origin);
-    url.searchParams.set('path', path.replace(/^\//, ''));
-    Object.entries(params).forEach(([key, value]) => {
-      if (value != null) url.searchParams.set(key, String(value));
-    });
+async function massiveFetch(path, params = {}) {
+  await acquireRateLimitSlot();
 
-    const response = await fetch(url.toString());
-
-    if (response.status === 503) throw new Error('no_api_key');
-    if (response.status === 429) throw new Error('rate_limit');
-    if (response.status === 403) {
-      if (allow403) return { status: 'FORBIDDEN', results: [] };
-      throw new Error('forbidden');
-    }
-    if (!response.ok) throw new Error(`http_${response.status}`);
-
-    const data = await response.json();
-    if (data?.status === 'ERROR' || data?.error) {
-      throw new Error(data.error || data.message || 'massive_error');
-    }
-
-    return data;
+  const url = new URL(MASSIVE_API, window.location.origin);
+  url.searchParams.set('path', path.replace(/^\//, ''));
+  Object.entries(params).forEach(([key, value]) => {
+    if (value != null) url.searchParams.set(key, String(value));
   });
+
+  const response = await fetch(url.toString());
+
+  if (response.status === 503) throw new Error('no_api_key');
+  if (response.status === 429) throw new Error('rate_limit');
+  if (response.status === 403) throw new Error('forbidden');
+  if (!response.ok) throw new Error(`http_${response.status}`);
+
+  const data = await response.json();
+  if (data?.status === 'ERROR' || data?.error) {
+    throw new Error(data.error || data.message || 'massive_error');
+  }
+
+  return data;
 }
 
 function formatDate(date) {
@@ -80,7 +83,6 @@ function contractListParams(underlyingPrice) {
   maxExpiry.setDate(maxExpiry.getDate() + 84);
 
   const params = {
-    underlying_ticker: undefined,
     'expiration_date.gte': formatDate(today),
     'expiration_date.lte': formatDate(maxExpiry),
     limit: 1000,
@@ -102,9 +104,7 @@ async function fetchContractIndex(symbol, underlyingPrice) {
   const cached = getCachedOptionContracts(upper);
   if (cached?.length) return cached;
 
-  const params = contractListParams(underlyingPrice);
-  params.underlying_ticker = upper;
-
+  const params = { ...contractListParams(underlyingPrice), underlying_ticker: upper };
   const data = await massiveFetch('v3/reference/options/contracts', params);
   const contracts = data.results || [];
   if (!contracts.length) throw new Error('empty_chain');
@@ -127,7 +127,7 @@ async function fetchPrevClose(optionTicker) {
   return close;
 }
 
-async function priceContracts(contracts) {
+async function priceContracts(contracts, onProgress) {
   const priceByTicker = {};
   const needsFetch = contracts.filter((c) => {
     const cached = getCachedOptionEod(c.ticker);
@@ -138,107 +138,80 @@ async function priceContracts(contracts) {
     return true;
   });
 
-  for (let i = 0; i < needsFetch.length; i += MAX_PREV_BATCH) {
-    const batch = needsFetch.slice(i, i + MAX_PREV_BATCH);
-    await Promise.all(
-      batch.map(async (c) => {
-        try {
-          const close = await fetchPrevClose(c.ticker);
-          if (close != null) priceByTicker[c.ticker] = close;
-        } catch {
-          // Skip contracts we couldn't price within rate limits.
-        }
-      }),
-    );
+  if (onProgress && Object.keys(priceByTicker).length) {
+    onProgress({ ...priceByTicker });
   }
+
+  await Promise.all(
+    needsFetch.map(async (c) => {
+      try {
+        const close = await fetchPrevClose(c.ticker);
+        if (close != null) {
+          priceByTicker[c.ticker] = close;
+          onProgress?.({ ...priceByTicker });
+        }
+      } catch {
+        // Skip contracts we couldn't price within rate limits.
+      }
+    }),
+  );
 
   return priceByTicker;
 }
 
-async function fetchBasicOptionsChain(symbol, underlyingPrice) {
+/** One API call — contract index + expiry list only (no pricing). */
+export async function fetchOptionExpiries(symbol, underlyingPrice = 0) {
   const upper = symbol.toUpperCase();
   const contracts = await fetchContractIndex(upper, underlyingPrice);
   const expiries = listExpiriesFromContracts(contracts, underlyingPrice);
-  const firstExpiry = expiries[0];
-  if (!firstExpiry) throw new Error('empty_chain');
+  if (!expiries.length) throw new Error('empty_chain');
 
-  const toPrice = contractsForExpiry(contracts, firstExpiry, underlyingPrice);
-  const priceByTicker = await priceContracts(toPrice);
-  const chains = buildChainFromReference(upper, contracts, priceByTicker, underlyingPrice);
-
-  if (!chains.length) throw new Error('empty_chain');
+  const cached = getCachedSymbolOptions(upper);
+  const chains = cached?.chainsByExpiry
+    ? Object.values(cached.chainsByExpiry).sort((a, b) => a.expiry.localeCompare(b.expiry))
+    : [];
 
   return {
-    chains,
     contracts,
     expiries,
-    source: 'eod',
-    fetchedAt: Date.now(),
-  };
-}
-
-async function fetchSnapshotChain(symbol, underlyingPrice) {
-  const upper = symbol.toUpperCase();
-  const today = new Date();
-  const maxExpiry = new Date(today);
-  maxExpiry.setDate(maxExpiry.getDate() + 84);
-
-  const params = {
-    'expiration_date.gte': formatDate(today),
-    'expiration_date.lte': formatDate(maxExpiry),
-    limit: 250,
-    sort: 'expiration_date',
-    order: 'asc',
-  };
-
-  if (underlyingPrice > 0) {
-    params['strike_price.gte'] = Math.max(1, Math.floor(underlyingPrice * 0.82));
-    params['strike_price.lte'] = Math.ceil(underlyingPrice * 1.18);
-  }
-
-  const data = await massiveFetch(`v3/snapshot/options/${upper}`, params, { allow403: true });
-
-  if (data.status === 'FORBIDDEN') {
-    return null;
-  }
-
-  const chains = parseMassiveOptionsChain(upper, data.results || []);
-  if (!chains.length) throw new Error('empty_chain');
-
-  return {
     chains,
-    contracts: null,
-    expiries: chains.map((c) => c.expiry),
-    source: 'live',
-    fetchedAt: Date.now(),
-    underlyingPrice: data.results?.[0]?.underlying_asset?.price ?? underlyingPrice,
+    source: 'eod',
+    fromCache: Boolean(cached?.expiries?.length),
   };
 }
 
-export async function fetchLiveOptionsChain(symbol, underlyingPrice = 0) {
+/** Price a single expiry on user request (~8 prev-bar calls). */
+export async function fetchExpiryEodPrices(
+  symbol,
+  expiry,
+  underlyingPrice,
+  contractsOverride = null,
+  onProgress,
+) {
   const upper = symbol.toUpperCase();
-  const cached = getCachedOptionsChain(upper);
-  if (cached) {
-    return { ...cached, fromCache: true };
+
+  const cachedChain = getCachedExpiryChain(upper, expiry);
+  if (cachedChain) {
+    return [cachedChain];
   }
 
-  let payload = await fetchSnapshotChain(upper, underlyingPrice);
-
-  if (!payload) {
-    payload = await fetchBasicOptionsChain(upper, underlyingPrice);
-  }
-
-  setCachedOptionsChain(upper, payload);
-  return payload;
-}
-
-/** Price an additional expiry on demand (Options Basic EOD path). */
-export async function fetchExpiryEodPrices(symbol, expiry, underlyingPrice, contractsOverride = null) {
-  const upper = symbol.toUpperCase();
   const contracts = contractsOverride || (await fetchContractIndex(upper, underlyingPrice));
   const toPrice = contractsForExpiry(contracts, expiry, underlyingPrice);
-  const priceByTicker = await priceContracts(toPrice);
-  return buildChainFromReference(upper, contracts, priceByTicker, underlyingPrice);
+
+  const priceByTicker = await priceContracts(toPrice, (partial) => {
+    const partialChains = buildChainFromReference(upper, contracts, partial, underlyingPrice);
+    const chain = partialChains.find((item) => item.expiry === expiry);
+    if (chain) onProgress?.(chain);
+  });
+
+  const chains = buildChainFromReference(upper, contracts, priceByTicker, underlyingPrice);
+  const chain = chains.find((item) => item.expiry === expiry);
+  if (!chain) throw new Error('empty_chain');
+
+  const expiries = listExpiriesFromContracts(contracts, underlyingPrice);
+  setCachedExpiryChain(upper, expiry, chain, expiries);
+
+  return [chain];
 }
 
 export function getOptionsChainErrorMessage(error) {
@@ -252,16 +225,13 @@ export function getOptionsChainErrorMessage(error) {
     case 'forbidden':
       return 'Massive rejected the request — check that your key has Options access enabled.';
     default:
-      return 'Could not load live option chain.';
+      return 'Could not load option chain.';
   }
 }
 
-export function getOptionsChainSourceLabel(source) {
-  if (source === 'live') {
-    return 'Live option quotes via Massive (near-the-money strikes, next ~12 weeks).';
+export function getOptionsChainSourceLabel(pricing = false) {
+  if (pricing) {
+    return 'Loading EOD option marks from Massive (5 API calls/min on free tier).';
   }
-  if (source === 'eod') {
-    return 'Option marks from Massive Options Basic — prior session EOD close (reference + prev bar).';
-  }
-  return '';
+  return 'Select an expiry — EOD marks load on demand (Massive Options Basic).';
 }

@@ -2,7 +2,7 @@
  * Build options chain groups from Massive reference contracts + optional EOD prices.
  */
 
-function pickNearMoneyContracts(contracts, underlyingPrice, maxStrikes = 6) {
+function pickNearMoneyContracts(contracts, underlyingPrice, maxStrikes = 4) {
   const byExpiry = new Map();
 
   contracts.forEach((c) => {
@@ -84,7 +84,7 @@ export function buildChainFromReference(symbol, contracts, priceByTicker, underl
 }
 
 /** Flat list of reference contracts for one expiry (for batched EOD pricing). */
-export function contractsForExpiry(contracts, expiry, underlyingPrice, maxStrikes = 6) {
+export function contractsForExpiry(contracts, expiry, underlyingPrice, maxStrikes = 4) {
   const skeleton = pickNearMoneyContracts(contracts, underlyingPrice, maxStrikes);
   const bucket = skeleton.find((item) => item.expiry === expiry);
   if (!bucket) return [];

@@ -2,12 +2,13 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { generateOptionsChain } from '../lib/blackScholes';
 import {
   fetchExpiryEodPrices,
-  fetchLiveOptionsChain,
+  fetchOptionExpiries,
   getOptionsChainErrorMessage,
+  getOptionsChainSourceLabel,
 } from '../marketData/massiveOptions';
 
 /**
- * Massive options chain — snapshot (Starter+) or reference+EOD (Basic).
+ * Massive options chain — expiries first, price on expiry click (Options Basic).
  */
 export function useOptionsChain(symbol, underlyingPrice, sigma) {
   const [state, setState] = useState({
@@ -15,7 +16,7 @@ export function useOptionsChain(symbol, underlyingPrice, sigma) {
     expiries: [],
     source: 'loading',
     message: '',
-    fromCache: false,
+    pricingExpiry: null,
   });
 
   const contractsRef = useRef(null);
@@ -31,23 +32,29 @@ export function useOptionsChain(symbol, underlyingPrice, sigma) {
     pricedExpiriesRef.current = new Set();
 
     async function load() {
-      setState({ chains: [], expiries: [], source: 'loading', message: '', fromCache: false });
+      setState({
+        chains: [],
+        expiries: [],
+        source: 'loading',
+        message: '',
+        pricingExpiry: null,
+      });
 
       try {
-        const live = await fetchLiveOptionsChain(upper, underlyingPrice || 0);
+        const result = await fetchOptionExpiries(upper, underlyingPrice || 0);
         if (cancelled) return;
 
-        contractsRef.current = live.contracts;
-        live.chains.forEach((c) => pricedExpiriesRef.current.add(c.expiry));
+        contractsRef.current = result.contracts;
+        result.chains.forEach((c) => pricedExpiriesRef.current.add(c.expiry));
 
         setState({
-          chains: live.chains,
-          expiries: live.expiries || live.chains.map((c) => c.expiry),
-          source: live.source,
-          message: live.fromCache ? 'Using cached chain (refreshes every 20 min).' : '',
-          fromCache: live.fromCache,
+          chains: result.chains,
+          expiries: result.expiries,
+          source: 'eod',
+          message: result.fromCache ? 'Some expiries restored from cache.' : '',
+          pricingExpiry: null,
         });
-        sourceRef.current = live.source;
+        sourceRef.current = 'eod';
       } catch (error) {
         if (cancelled) return;
         const model = generateOptionsChain(upper, underlyingPrice || 100, sigma);
@@ -56,7 +63,7 @@ export function useOptionsChain(symbol, underlyingPrice, sigma) {
           expiries: model.map((c) => c.expiry),
           source: 'model',
           message: getOptionsChainErrorMessage(error),
-          fromCache: false,
+          pricingExpiry: null,
         });
         sourceRef.current = 'model';
       }
@@ -70,29 +77,46 @@ export function useOptionsChain(symbol, underlyingPrice, sigma) {
   }, [symbol, underlyingPrice, sigma]);
 
   const loadExpiry = useCallback(async (expiry) => {
-    if (!expiry || sourceRef.current !== 'eod' || pricedExpiriesRef.current.has(expiry)) {
-      return;
-    }
+    if (!expiry || sourceRef.current !== 'eod') return;
+    if (pricedExpiriesRef.current.has(expiry)) return;
+
+    setState((prev) => ({
+      ...prev,
+      pricingExpiry: expiry,
+      message: getOptionsChainSourceLabel(true),
+    }));
 
     try {
-      const chains = await fetchExpiryEodPrices(
+      await fetchExpiryEodPrices(
         symbol,
         expiry,
         underlyingPrice || 0,
         contractsRef.current,
+        (partialChain) => {
+          setState((prev) => {
+            const merged = new Map(prev.chains.map((c) => [c.expiry, c]));
+            merged.set(partialChain.expiry, partialChain);
+            return {
+              ...prev,
+              chains: [...merged.values()].sort((a, b) => a.expiry.localeCompare(b.expiry)),
+            };
+          });
+        },
       );
+
       pricedExpiriesRef.current.add(expiry);
-      setState((prev) => {
-        const merged = new Map(prev.chains.map((c) => [c.expiry, c]));
-        chains.forEach((c) => merged.set(c.expiry, c));
-        return {
-          ...prev,
-          chains: [...merged.values()].sort((a, b) => a.expiry.localeCompare(b.expiry)),
-          message: 'Additional expiries load on demand (5 API calls/min).',
-        };
-      });
+
+      setState((prev) => ({
+        ...prev,
+        pricingExpiry: null,
+        message: '',
+      }));
     } catch {
-      // Keep existing chain visible.
+      setState((prev) => ({
+        ...prev,
+        pricingExpiry: null,
+        message: getOptionsChainErrorMessage(new Error('empty_chain')),
+      }));
     }
   }, [symbol, underlyingPrice]);
 

@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react';
-import { resolveUnderlyingPrice, hasSyncedMarksForSymbol } from '../lib/portfolioStorage';
+import { useState } from 'react';
+import { resolveUnderlyingPrice } from '../lib/portfolioStorage';
 import { usePortfolio } from '../hooks/usePortfolio';
 import { useOptionsChain } from '../hooks/useOptionsChain';
 import { getOptionsChainSourceLabel } from '../marketData/massiveOptions';
@@ -26,54 +26,51 @@ export default function OptionsChain({ symbol }) {
     seededFallbackPrice,
   );
 
-  const { chains, expiries: chainExpiries, source, message, loadExpiry } = useOptionsChain(
-    symbol,
-    underlyingPrice,
-    0.3,
-  );
+  const {
+    chains,
+    expiries,
+    source,
+    message,
+    pricingExpiry,
+    loadExpiry,
+  } = useOptionsChain(symbol, underlyingPrice, 0.3);
 
   const [type, setType] = useState('call');
-  const [expiry, setExpiry] = useState('');
+  const [selectedExpiry, setSelectedExpiry] = useState('');
   const [selected, setSelected] = useState(null);
 
-  const expiries = chainExpiries.length
-    ? chainExpiries
-    : chains.map((item) => item.expiry);
-  const activeExpiry = expiry || expiries[0] || '';
+  const isEod = source === 'eod';
+  const isModel = source === 'model';
+  const isLoading = source === 'loading';
+
+  const activeExpiry = isModel
+    ? (selectedExpiry || expiries[0] || '')
+    : selectedExpiry;
+
   const activeChain = chains.find((item) => item.expiry === activeExpiry);
   const rows = activeChain ? activeChain[type === 'call' ? 'calls' : 'puts'] : [];
+  const isPricing = Boolean(pricingExpiry && pricingExpiry === activeExpiry);
 
-  useEffect(() => {
-    if (activeExpiry && source === 'eod') {
-      loadExpiry(activeExpiry);
-    }
-  }, [activeExpiry, source, loadExpiry]);
-
-  const hasSyncedMarks = hasSyncedMarksForSymbol(upper, portfolioState.marketSnapshot);
-  const isLive = source === 'live';
-  const isEod = source === 'eod';
-  const isLoading = source === 'loading';
+  function handleExpiryClick(item) {
+    setSelectedExpiry(item);
+    setSelected(null);
+    if (isEod) loadExpiry(item);
+  }
 
   return (
     <div className="section-gap">
-      {hasSyncedMarks && (
-        <div className="banner banner-info">
-          Stock prices use your synced portfolio marks so they match across devices.
-        </div>
-      )}
-
       {isLoading && (
-        <div className="banner banner-info">Loading option chain…</div>
+        <div className="banner banner-info">Loading expiries…</div>
       )}
 
-      {(isLive || isEod) && (
+      {isEod && !isLoading && (
         <div className="banner banner-info">
-          {getOptionsChainSourceLabel(source)}
-          {message ? ` ${message}` : ''}
+          {isPricing ? getOptionsChainSourceLabel(true) : getOptionsChainSourceLabel()}
+          {!isPricing && message ? ` ${message}` : ''}
         </div>
       )}
 
-      {source === 'model' && (
+      {isModel && (
         <div className="banner banner-warning">
           {message} Using model-derived premiums (Black-Scholes).
         </div>
@@ -95,19 +92,28 @@ export default function OptionsChain({ symbol }) {
               key={item}
               type="button"
               className={activeExpiry === item ? 'pill active' : 'pill'}
-              onClick={() => {
-                setExpiry(item);
-                setSelected(null);
-              }}
+              onClick={() => handleExpiryClick(item)}
             >
               {item}
             </button>
           ))}
         </div>
 
-        {!isLoading && !rows.length && (
+        {!isLoading && isEod && !activeExpiry && (
           <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>
-            No {type}s for this expiry. Try another date or wait if EOD prices are still loading.
+            Select an expiry to load strikes.
+          </p>
+        )}
+
+        {!isLoading && activeExpiry && isPricing && !rows.length && (
+          <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>
+            Loading EOD marks for {activeExpiry}…
+          </p>
+        )}
+
+        {!isLoading && activeExpiry && !isPricing && !rows.length && (
+          <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>
+            No {type}s for this expiry. Try another date.
           </p>
         )}
 
@@ -126,7 +132,7 @@ export default function OptionsChain({ symbol }) {
               }}
             >
               <span>Strike</span>
-              <span>{isLive || isEod ? 'Mid quote' : 'Mid premium'}</span>
+              <span>{isEod ? 'EOD mid' : 'Mid premium'}</span>
             </div>
 
             {rows.map((row) => (
@@ -152,11 +158,7 @@ export default function OptionsChain({ symbol }) {
       </div>
 
       {selected && (
-        <OptionsTradePanel
-          contract={selected}
-          underlyingPrice={underlyingPrice}
-          liveGreeks={isLive}
-        />
+        <OptionsTradePanel contract={selected} underlyingPrice={underlyingPrice} />
       )}
     </div>
   );
