@@ -97,57 +97,133 @@ function simulatedSearch(query) {
   );
 }
 
-function rangeConfig(range) {
+function rangeAttempts(range) {
   const now = Math.floor(Date.now() / 1000);
+  const day = 24 * 3600;
+
   switch (range) {
     case 'D':
-      return { resolution: '5', from: now - 5 * 24 * 3600, to: now };
+      return [
+        { resolution: '5', from: now - 2 * day, to: now },
+        { resolution: '15', from: now - 5 * day, to: now },
+        { resolution: '60', from: now - 10 * day, to: now },
+        { resolution: 'D', from: now - 30 * day, to: now },
+      ];
     case 'W':
-      return { resolution: 'D', from: now - 90 * 24 * 3600, to: now };
+      return [{ resolution: 'D', from: now - 90 * day, to: now }];
     case 'M':
-      return { resolution: 'D', from: now - 365 * 24 * 3600, to: now };
+      return [{ resolution: 'D', from: now - 365 * day, to: now }];
     case 'Y':
     default:
-      return { resolution: 'W', from: now - 5 * 365 * 24 * 3600, to: now };
+      return [
+        { resolution: 'W', from: now - 5 * 365 * day, to: now },
+        { resolution: 'D', from: now - 365 * day, to: now },
+      ];
   }
 }
 
-function simulatedCandles(symbol, range) {
-  const { resolution, from, to } = rangeConfig(range);
-  const step =
-    resolution === '5'
-      ? 5 * 60
-      : resolution === 'D'
-        ? 24 * 3600
-        : 7 * 24 * 3600;
+function sliceCandlesForRange(candles, range) {
+  if (!candles?.t?.length) return candles;
 
-  const quote = simulatedQuote(symbol);
-  const points = Math.min(300, Math.floor((to - from) / step));
+  const now = Date.now() / 1000;
+  const windows = {
+    D: 5 * 24 * 3600,
+    W: 90 * 24 * 3600,
+    M: 365 * 24 * 3600,
+    Y: 5 * 365 * 24 * 3600,
+  };
+  const cutoff = now - (windows[range] || windows.W);
+  const startIndex = candles.t.findIndex((ts) => ts >= cutoff);
+  const from = startIndex === -1 ? 0 : startIndex;
+
+  return {
+    s: 'ok',
+    t: candles.t.slice(from),
+    o: candles.o.slice(from),
+    h: candles.h.slice(from),
+    l: candles.l.slice(from),
+    c: candles.c.slice(from),
+  };
+}
+
+function downsampleCandles(candles, maxPoints = 120) {
+  if (!candles?.t?.length || candles.t.length <= maxPoints) return candles;
+
+  const step = Math.ceil(candles.t.length / maxPoints);
   const t = [];
   const o = [];
   const h = [];
   const l = [];
   const c = [];
 
-  let price = quote.pc;
-  for (let i = 0; i < points; i += 1) {
-    const ts = from + i * step;
-    const wobble = Math.sin(i / 7 + hashString(symbol) * 0.01) * 0.012;
-    const open = price;
-    const close = price * (1 + wobble);
-    const high = Math.max(open, close) * 1.004;
-    const low = Math.min(open, close) * 0.996;
-    t.push(ts);
+  for (let i = 0; i < candles.t.length; i += step) {
+    t.push(candles.t[i]);
+    o.push(candles.o[i]);
+    h.push(candles.h[i]);
+    l.push(candles.l[i]);
+    c.push(candles.c[i]);
+  }
+
+  const last = candles.t.length - 1;
+  if (t[t.length - 1] !== candles.t[last]) {
+    t.push(candles.t[last]);
+    o.push(candles.o[last]);
+    h.push(candles.h[last]);
+    l.push(candles.l[last]);
+    c.push(candles.c[last]);
+  }
+
+  return { s: 'ok', t, o, h, l, c };
+}
+
+/** Approximate chart from live quote when Finnhub candles are unavailable. */
+async function approximateCandles(symbol, range) {
+  let quote;
+  try {
+    quote = await liveQuote(symbol);
+  } catch {
+    quote = simulatedQuote(symbol);
+  }
+
+  const attempts = rangeAttempts(range);
+  const { from, to } = attempts[0];
+  const pointCount = range === 'D' ? 48 : range === 'W' ? 60 : range === 'M' ? 90 : 100;
+  const step = (to - from) / Math.max(pointCount - 1, 1);
+  const seed = hashString(symbol);
+  const start = quote.pc || quote.c;
+  const end = quote.c || quote.pc;
+
+  const t = [];
+  const o = [];
+  const h = [];
+  const l = [];
+  const c = [];
+
+  for (let i = 0; i < pointCount; i += 1) {
+    const progress = i / Math.max(pointCount - 1, 1);
+    const noise = (Math.sin(i * 0.7 + seed) + Math.cos(i * 0.3 + seed)) * 0.004;
+    const price = start + (end - start) * progress + start * noise;
+    const open = i === 0 ? start : c[i - 1];
+    const close = i === pointCount - 1 ? end : price;
+    const high = Math.max(open, close) * 1.002;
+    const low = Math.min(open, close) * 0.998;
+
+    t.push(Math.floor(from + i * step));
     o.push(Number(open.toFixed(2)));
     h.push(Number(high.toFixed(2)));
     l.push(Number(low.toFixed(2)));
     c.push(Number(close.toFixed(2)));
-    price = close;
   }
 
-  if (c.length) c[c.length - 1] = quote.c;
-
-  return { s: 'ok', t, o, h, l, c };
+  return {
+    s: 'ok',
+    t,
+    o,
+    h,
+    l,
+    c,
+    _source: 'approximate',
+  };
 }
 
 async function finnhubFetch(path, params = {}) {
@@ -216,24 +292,38 @@ async function liveQuote(symbol) {
 
 async function liveCandles(symbol, range) {
   const upper = symbol.toUpperCase();
-  const { resolution, from, to } = rangeConfig(range);
   const cacheKey = `candles:${upper}:${range}`;
   const cached = getCached(cacheKey);
   if (cached) return cached;
 
-  const data = await finnhubFetch('/stock/candle', {
-    symbol: upper,
-    resolution,
-    from,
-    to,
-  });
+  const attempts = rangeAttempts(range);
 
-  if (data.s !== 'ok' || !data.t?.length) {
-    throw new Error('no_candles');
+  for (const attempt of attempts) {
+    try {
+      const data = await finnhubFetch('/stock/candle', {
+        symbol: upper,
+        resolution: attempt.resolution,
+        from: attempt.from,
+        to: attempt.to,
+      });
+
+      if (data.s === 'ok' && data.t?.length) {
+        const sliced = sliceCandlesForRange(data, range);
+        const result = {
+          ...downsampleCandles(sliced),
+          _source: 'live',
+        };
+        setCache(cacheKey, result, CACHE_TTL.candles);
+        return result;
+      }
+    } catch {
+      // Try next resolution/window.
+    }
   }
 
-  setCache(cacheKey, data, CACHE_TTL.candles);
-  return data;
+  const approximate = await approximateCandles(upper, range);
+  setCache(cacheKey, approximate, CACHE_TTL.candles);
+  return approximate;
 }
 
 async function liveMarketStatus() {
@@ -339,11 +429,13 @@ export const marketData = {
     const upper = symbol.toUpperCase();
     const cacheKey = `candles:${upper}:${range}`;
 
-    return withFallback(
-      () => liveCandles(upper, range),
-      () => simulatedCandles(upper, range),
-      cacheKey,
-    );
+    try {
+      return await liveCandles(upper, range);
+    } catch {
+      const stale = getStale(cacheKey);
+      if (stale) return stale;
+      return approximateCandles(upper, range);
+    }
   },
 
   async getMarketStatus() {

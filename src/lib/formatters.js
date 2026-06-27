@@ -43,6 +43,18 @@ export function formatShortDate(ts) {
   });
 }
 
+/** Format x-axis labels based on chart range (D/W/M/Y). */
+export function formatChartLabel(ts, range) {
+  const date = new Date(ts * 1000);
+  if (range === 'D') {
+    return date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+  }
+  if (range === 'Y') {
+    return date.toLocaleDateString('en-US', { month: 'short', year: '2-digit' });
+  }
+  return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+}
+
 export function plClass(value) {
   if (value > 0) return 'positive';
   if (value < 0) return 'negative';

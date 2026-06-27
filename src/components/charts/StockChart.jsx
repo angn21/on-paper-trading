@@ -8,7 +8,7 @@ import {
   YAxis,
 } from 'recharts';
 import { marketData } from '../../marketData/marketData';
-import { formatCurrency, formatShortDate } from '../../lib/formatters';
+import { formatChartLabel, formatCurrency } from '../../lib/formatters';
 
 const RANGES = ['D', 'W', 'M', 'Y'];
 
@@ -44,10 +44,12 @@ export default function StockChart({ symbol }) {
     if (!candles?.t?.length) return [];
     return candles.t.map((ts, index) => ({
       ts,
-      label: formatShortDate(ts),
+      label: formatChartLabel(ts, range),
       price: candles.c[index],
     }));
-  }, [candles]);
+  }, [candles, range]);
+
+  const isApproximate = candles?._source === 'approximate';
 
   return (
     <div className="card">
@@ -67,6 +69,12 @@ export default function StockChart({ symbol }) {
         </div>
       </div>
 
+      {isApproximate && (
+        <div className="banner banner-warning" style={{ marginBottom: 12 }}>
+          Historical candles unavailable on this data plan — showing an approximate chart from the live quote.
+        </div>
+      )}
+
       {loading && <div className="skeleton" style={{ height: 220 }} />}
 
       {!loading && error && <div className="empty-state">{error}</div>}
@@ -81,13 +89,20 @@ export default function StockChart({ symbol }) {
                   <stop offset="100%" stopColor="#1ED760" stopOpacity={0.02} />
                 </linearGradient>
               </defs>
-              <XAxis dataKey="label" tick={{ fill: '#8E8E93', fontSize: 11 }} axisLine={false} tickLine={false} minTickGap={24} />
+              <XAxis
+                dataKey="label"
+                tick={{ fill: '#8E8E93', fontSize: 11 }}
+                axisLine={false}
+                tickLine={false}
+                minTickGap={32}
+                interval="preserveStartEnd"
+              />
               <YAxis
                 domain={['auto', 'auto']}
                 tick={{ fill: '#8E8E93', fontSize: 11 }}
                 axisLine={false}
                 tickLine={false}
-                tickFormatter={(value) => `$${value}`}
+                tickFormatter={(value) => `$${Math.round(value)}`}
                 width={52}
               />
               <Tooltip
@@ -95,7 +110,7 @@ export default function StockChart({ symbol }) {
                 labelStyle={{ color: '#8E8E93' }}
                 formatter={(value) => [formatCurrency(value), 'Price']}
               />
-              <Area type="monotone" dataKey="price" stroke="#1ED760" fill="url(#stockFill)" strokeWidth={2} />
+              <Area type="monotone" dataKey="price" stroke="#1ED760" fill="url(#stockFill)" strokeWidth={2} dot={false} />
             </AreaChart>
           </ResponsiveContainer>
         </div>
