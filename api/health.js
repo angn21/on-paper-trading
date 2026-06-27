@@ -1,6 +1,6 @@
-import { getFinnhubKey } from '../_lib/finnhubProxy.js';
+export const config = { runtime: 'edge' };
 
-export default function handler(_req, res) {
-  const configured = Boolean(getFinnhubKey());
-  res.status(200).json({ marketData: configured ? 'configured' : 'missing' });
+export default function handler() {
+  const key = (process.env.FINNHUB_API_KEY || process.env.VITE_FINNHUB_API_KEY || '').trim();
+  return Response.json({ marketData: key ? 'configured' : 'missing' });
 }

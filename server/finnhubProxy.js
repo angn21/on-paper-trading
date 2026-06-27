@@ -1,15 +1,9 @@
 const FINNHUB_BASE = 'https://finnhub.io/api/v1';
 
-/** Server-only Finnhub key — never expose to the browser bundle. */
 export function getFinnhubKey() {
   return (process.env.FINNHUB_API_KEY || process.env.VITE_FINNHUB_API_KEY || '').trim();
 }
 
-/**
- * Forward a request to Finnhub with the server-side API key attached.
- * @param {string} path - e.g. "quote" or "stock/candle"
- * @param {URLSearchParams} queryParams - client query params (no token)
- */
 export async function proxyFinnhubRequest(path, queryParams) {
   const token = getFinnhubKey();
   if (!token) {
