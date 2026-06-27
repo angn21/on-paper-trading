@@ -43,6 +43,7 @@ export default function PositionsList() {
             </div>
             <div className="position-meta">
               {position.contracts} contracts · exp {position.expiry}
+              {position.markSource === 'eod' ? ' · EOD + Δ adj' : position.markSource === 'model' ? ' · Model' : ''}
             </div>
           </div>
           <div className="position-row-values">

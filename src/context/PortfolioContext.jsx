@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
-import { priceOptionPosition } from '../lib/blackScholes';
+import { buildMarkSnapshot, markOpenOption } from '../lib/optionMarks';
 import { shouldFillOrder } from '../lib/orders';
 import { applyStockTrade, revertStockTransaction } from '../lib/positions';
 import {
@@ -11,6 +11,7 @@ import {
   resolveUnderlyingPrice,
   resolveVolatility,
 } from '../lib/portfolioStorage';
+import { refreshOpenOptionMarks } from '../marketData/massiveOptions';
 
 const defaultState = defaultPortfolioState;
 
@@ -38,6 +39,16 @@ export function PortfolioProvider({ children }) {
   const [priceHistory, setPriceHistory] = useState({});
   const lastSnapshotRef = useRef(0);
   const quoteRefreshPausedUntilRef = useRef(0);
+  const stateRef = useRef(state);
+  const quotesRef = useRef(quotes);
+  const volatilityRef = useRef(volatility);
+  const volatilityReliabilityRef = useRef(volatilityReliability);
+  const optionMarksRefreshRef = useRef(false);
+
+  stateRef.current = state;
+  quotesRef.current = quotes;
+  volatilityRef.current = volatility;
+  volatilityReliabilityRef.current = volatilityReliability;
 
   useEffect(() => {
     const snapshot = state.marketSnapshot;
@@ -323,6 +334,30 @@ export function PortfolioProvider({ children }) {
 
     let result = { ok: false, error: 'Unable to buy option.' };
 
+    const tradeFields = contract.optionTicker
+      ? {
+          optionTicker: contract.optionTicker,
+          markSnapshot: buildMarkSnapshot({
+            mid: px,
+            underlyingPrice: resolveUnderlyingPrice(
+              contract.symbol,
+              quotesRef.current,
+              stateRef.current.marketSnapshot,
+              seededFallbackPrice,
+            ),
+            strike: contract.strike,
+            expiry: contract.expiry,
+            type: contract.type,
+            sigma: resolveVolatility(
+              contract.symbol,
+              volatilityRef.current,
+              stateRef.current.marketSnapshot,
+              volatilityReliabilityRef.current,
+            ),
+          }),
+        }
+      : {};
+
     setState((prev) => {
       if (cost > prev.cash) {
         result = { ok: false, error: 'Not enough cash for this option purchase.' };
@@ -344,7 +379,7 @@ export function PortfolioProvider({ children }) {
           (existing.avgPremium * existing.contracts + px * qty) / totalContracts;
         nextOptions = prev.options.map((item) =>
           item.id === existing.id
-            ? { ...item, contracts: totalContracts, avgPremium }
+            ? { ...item, contracts: totalContracts, avgPremium, ...tradeFields }
             : item,
         );
       } else {
@@ -358,6 +393,7 @@ export function PortfolioProvider({ children }) {
             expiry: contract.expiry,
             contracts: qty,
             avgPremium: px,
+            ...tradeFields,
           },
         ];
       }
@@ -493,6 +529,53 @@ export function PortfolioProvider({ children }) {
     setVolatilityReliability({});
   }, []);
 
+  useEffect(() => {
+    const positions = state.options;
+    const needsRefresh = positions.some((p) => {
+      if (!p.optionTicker) return false;
+      if (!p.markSnapshot) return true;
+      return Date.now() - p.markSnapshot.t >= 20 * 60 * 60 * 1000;
+    });
+    if (!needsRefresh || optionMarksRefreshRef.current) return undefined;
+
+    optionMarksRefreshRef.current = true;
+    let cancelled = false;
+
+    refreshOpenOptionMarks(positions, (position) => ({
+      underlying: resolveUnderlyingPrice(
+        position.symbol,
+        quotesRef.current,
+        stateRef.current.marketSnapshot,
+        seededFallbackPrice,
+      ),
+      sigma: resolveVolatility(
+        position.symbol,
+        volatilityRef.current,
+        stateRef.current.marketSnapshot,
+        volatilityReliabilityRef.current,
+      ),
+    }))
+      .then((updated) => {
+        if (cancelled) return;
+        setState((prev) => {
+          const changed = updated.some((opt) => {
+            const before = prev.options.find((item) => item.id === opt.id);
+            return JSON.stringify(before?.markSnapshot) !== JSON.stringify(opt.markSnapshot);
+          });
+          if (!changed) return prev;
+          return { ...prev, options: updated };
+        });
+      })
+      .finally(() => {
+        if (!cancelled) optionMarksRefreshRef.current = false;
+      });
+
+    return () => {
+      cancelled = true;
+      optionMarksRefreshRef.current = false;
+    };
+  }, [state.options]);
+
   const computed = useMemo(() => {
     const stockPositions = Object.entries(state.positions).map(([symbol, position]) => {
       const quote = quotes[symbol];
@@ -530,7 +613,7 @@ export function PortfolioProvider({ children }) {
         state.marketSnapshot,
         volatilityReliability,
       );
-      const pricing = priceOptionPosition(position, underlying, sigma);
+      const pricing = markOpenOption(position, underlying, sigma);
       return { ...position, underlying, ...pricing };
     });
 

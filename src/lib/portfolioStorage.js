@@ -1,4 +1,35 @@
+import { sanitizeMarkSnapshot } from './optionMarks';
 import { DEFAULT_SIGMA } from './volatility';
+
+function sanitizeOptionPosition(raw) {
+  if (!raw || typeof raw !== 'object') return null;
+
+  const contracts = Number(raw.contracts);
+  const avgPremium = Number(raw.avgPremium);
+  const strike = Number(raw.strike);
+  const symbol = String(raw.symbol || '').toUpperCase();
+  const expiry = String(raw.expiry || '');
+  const id = String(raw.id || '');
+
+  if (!id || !symbol || !expiry || !(contracts > 0) || !(avgPremium > 0) || !(strike > 0)) {
+    return null;
+  }
+
+  const markSnapshot = sanitizeMarkSnapshot(raw.markSnapshot);
+  const optionTicker = raw.optionTicker ? String(raw.optionTicker) : null;
+
+  return {
+    id,
+    symbol,
+    type: raw.type === 'put' ? 'put' : 'call',
+    strike,
+    expiry,
+    contracts,
+    avgPremium,
+    ...(optionTicker ? { optionTicker } : {}),
+    ...(markSnapshot ? { markSnapshot } : {}),
+  };
+}
 
 export const STORAGE_KEY = 'on-paper-portfolio-v2';
 export const STARTING_CASH = 100_000;
@@ -142,7 +173,9 @@ export function sanitizePortfolioState(raw) {
   return {
     cash: Number(raw.cash) >= 0 ? Number(raw.cash) : STARTING_CASH,
     positions: raw.positions && typeof raw.positions === 'object' ? raw.positions : {},
-    options: Array.isArray(raw.options) ? raw.options : [],
+    options: Array.isArray(raw.options)
+      ? raw.options.map(sanitizeOptionPosition).filter(Boolean)
+      : [],
     watchlist: Array.isArray(raw.watchlist) ? raw.watchlist : [],
     transactions: Array.isArray(raw.transactions) ? raw.transactions : [],
     portfolioHistory: Array.isArray(raw.portfolioHistory) ? raw.portfolioHistory : [],

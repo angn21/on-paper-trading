@@ -8,6 +8,7 @@ import {
   contractsForExpiry,
   listExpiriesFromContracts,
 } from '../lib/buildChainFromReference.js';
+import { buildMarkSnapshot } from '../lib/optionMarks.js';
 import {
   getCachedExpiryChain,
   getCachedSymbolOptions,
@@ -234,4 +235,42 @@ export function getOptionsChainSourceLabel(pricing = false) {
     return 'Loading EOD option marks from Massive (5 API calls/min on free tier).';
   }
   return 'Select an expiry — EOD marks load on demand (Massive Options Basic).';
+}
+
+const MARKS_REFRESH_MS = 20 * 60 * 60 * 1000;
+
+/** Re-anchor open positions to latest EOD prev close (~1 API call per held contract). */
+export async function refreshOpenOptionMarks(positions, resolveContext) {
+  const eligible = positions.filter((p) => p.optionTicker);
+  if (!eligible.length) return positions;
+
+  const byId = new Map(positions.map((p) => [p.id, { ...p }]));
+
+  await Promise.all(
+    eligible.map(async (position) => {
+      const snap = position.markSnapshot;
+      if (snap && Date.now() - snap.t < MARKS_REFRESH_MS) return;
+
+      try {
+        const close = await fetchPrevClose(position.optionTicker);
+        if (close == null) return;
+
+        const { underlying, sigma } = resolveContext(position);
+        const markSnapshot = buildMarkSnapshot({
+          mid: close,
+          underlyingPrice: underlying,
+          strike: position.strike,
+          expiry: position.expiry,
+          type: position.type,
+          sigma,
+        });
+
+        byId.set(position.id, { ...position, markSnapshot });
+      } catch {
+        // Keep existing snapshot on failure.
+      }
+    }),
+  );
+
+  return positions.map((p) => byId.get(p.id) || p);
 }
