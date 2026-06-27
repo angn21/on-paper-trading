@@ -1,3 +1,5 @@
+import { DEFAULT_SIGMA } from './volatility';
+
 export const STORAGE_KEY = 'on-paper-portfolio-v2';
 export const STARTING_CASH = 100_000;
 
@@ -81,18 +83,23 @@ export function buildMarketSnapshot(state, quotes = {}, volatility = {}) {
   return snapshot;
 }
 
-/** Snapshot for cloud sync — always capture current marks, including simulated fallbacks. */
-export function buildSyncSnapshot(state, quotes = {}, volatility = {}) {
-  const snapshot = { quotes: {}, volatility: {} };
+/** Snapshot for cloud sync — only trusted (non-simulated) marks. */
+export function buildSyncSnapshot(state, quotes = {}, volatility = {}, reliability = {}) {
+  const existing = sanitizeMarketSnapshot(state?.marketSnapshot);
+  const snapshot = {
+    quotes: { ...existing.quotes },
+    volatility: { ...existing.volatility },
+  };
 
   symbolsForPortfolio(state).forEach((symbol) => {
     const upper = symbol.toUpperCase();
     const live = quotes[upper];
 
-    if (live?.c > 0) {
+    if (live?.c > 0 && !live._simulated) {
       snapshot.quotes[upper] = { c: live.c, dp: live.dp ?? 0 };
     }
-    if (volatility[upper] > 0) {
+
+    if (volatility[upper] > 0 && reliability[upper] !== false) {
       snapshot.volatility[upper] = volatility[upper];
     }
   });
@@ -192,24 +199,38 @@ export function pickSyncPayload(state) {
   };
 }
 
+export function resolveDisplayPrice(symbol, liveQuotes, marketSnapshot) {
+  const upper = symbol.toUpperCase();
+  const snapPrice = marketSnapshot?.quotes?.[upper]?.c;
+  if (snapPrice) return snapPrice;
+
+  const live = liveQuotes[upper];
+  if (live?.c && !live._simulated) return live.c;
+
+  return null;
+}
+
 export function resolveUnderlyingPrice(symbol, liveQuotes, marketSnapshot, fallbackPrice) {
   const upper = symbol.toUpperCase();
   const snapPrice = marketSnapshot?.quotes?.[upper]?.c;
 
-  // Portfolio symbols synced to cloud — shared marks beat device-local quotes.
   if (snapPrice) return snapPrice;
 
   const live = liveQuotes[upper];
-  if (live?.c) return live.c;
+  if (live?.c && !live._simulated) return live.c;
 
   return fallbackPrice(upper);
 }
 
-export function resolveVolatility(symbol, liveVolatility, marketSnapshot) {
+export function resolveVolatility(symbol, liveVolatility, marketSnapshot, reliability = {}) {
   const upper = symbol.toUpperCase();
 
   if (marketSnapshot?.volatility?.[upper]) return marketSnapshot.volatility[upper];
-  if (liveVolatility[upper]) return liveVolatility[upper];
 
-  return 0.3;
+  const live = liveVolatility[upper];
+  if (live != null && reliability[upper] !== false) {
+    return live;
+  }
+
+  return DEFAULT_SIGMA;
 }

@@ -33,9 +33,10 @@ function seedMarketSnapshot(data, setQuote, setVolatility) {
   });
 }
 
-async function prepareSyncPayload(state, quotes, volatility, setQuote, setVolatility) {
+async function prepareSyncPayload(state, quotes, volatility, volatilityReliability, setQuote, setVolatility) {
   const mergedQuotes = { ...quotes };
   const mergedVol = { ...volatility };
+  const mergedReliability = { ...volatilityReliability };
   const symbols = symbolsForPortfolio(state);
 
   for (const symbol of symbols) {
@@ -43,22 +44,27 @@ async function prepareSyncPayload(state, quotes, volatility, setQuote, setVolati
 
     try {
       const quote = await marketData.getQuote(upper);
-      mergedQuotes[upper] = quote;
+      if (!quote._simulated) {
+        mergedQuotes[upper] = quote;
+      }
       setQuote(upper, quote);
     } catch {
       // Keep any existing quote for this symbol.
     }
 
     try {
-      const sigma = await marketData.getVolatility(upper);
-      mergedVol[upper] = sigma;
-      setVolatility(upper, sigma);
+      const volResult = await marketData.getVolatility(upper);
+      if (volResult.reliable) {
+        mergedVol[upper] = volResult.sigma;
+        mergedReliability[upper] = true;
+      }
+      setVolatility(upper, volResult);
     } catch {
       // Keep any existing volatility for this symbol.
     }
   }
 
-  const snapshot = buildSyncSnapshot(state, mergedQuotes, mergedVol);
+  const snapshot = buildSyncSnapshot(state, mergedQuotes, mergedVol, mergedReliability);
 
   return {
     ...pickSyncPayload(state),
@@ -86,7 +92,7 @@ function isRemoteNewer(remoteUpdatedAt, knownUpdatedAt) {
 
 export function PortfolioSyncProvider({ children }) {
   const { user, loading: authLoading } = useAuth();
-  const { portfolioState, replacePortfolioState, quotes, volatility, setQuote, setVolatility, pauseQuoteRefresh, resumeQuoteRefresh, mergeMarketSnapshot } = usePortfolioContext();
+  const { portfolioState, replacePortfolioState, quotes, volatility, volatilityReliability, setQuote, setVolatility, pauseQuoteRefresh, resumeQuoteRefresh, mergeMarketSnapshot } = usePortfolioContext();
   const [syncReady, setSyncReady] = useState(false);
   const [cloudUpdatedAt, setCloudUpdatedAt] = useState(null);
   const [syncMessage, setSyncMessage] = useState('');
@@ -96,6 +102,7 @@ export function PortfolioSyncProvider({ children }) {
   const portfolioRef = useRef(portfolioState);
   const quotesRef = useRef(quotes);
   const volatilityRef = useRef(volatility);
+  const volatilityReliabilityRef = useRef(volatilityReliability);
   const cloudUpdatedAtRef = useRef(null);
   const dirtyRef = useRef(false);
   const suppressDirtyRef = useRef(false);
@@ -104,6 +111,7 @@ export function PortfolioSyncProvider({ children }) {
   portfolioRef.current = portfolioState;
   quotesRef.current = quotes;
   volatilityRef.current = volatility;
+  volatilityReliabilityRef.current = volatilityReliability;
 
   const applyRemoteState = useCallback((data, updatedAt) => {
     suppressDirtyRef.current = true;
@@ -124,6 +132,7 @@ export function PortfolioSyncProvider({ children }) {
       state,
       quotesRef.current,
       volatilityRef.current,
+      volatilityReliabilityRef.current,
       setQuote,
       setVolatility,
     );

@@ -11,34 +11,22 @@ import TradePanel from '../components/TradePanel';
 import WhatIfCalculator from '../components/WhatIfCalculator';
 import { marketData } from '../marketData/marketData';
 import { usePortfolio } from '../hooks/usePortfolio';
-import { hasSyncedMarksForSymbol, resolveUnderlyingPrice } from '../lib/portfolioStorage';
+import { hasSyncedMarksForSymbol, resolveDisplayPrice } from '../lib/portfolioStorage';
 import { getSector } from '../lib/sectors';
 import { formatCurrency, formatPercent, plClass } from '../lib/formatters';
 
-function seededFallbackPrice(symbol) {
-  let hash = 0;
-  for (let i = 0; i < symbol.length; i += 1) {
-    hash = (hash << 5) - hash + symbol.charCodeAt(i);
-    hash |= 0;
-  }
-  return 20 + (Math.abs(hash) % 480);
-}
-
 function buildDisplayQuote(symbol, quotes, marketSnapshot) {
   const upper = symbol.toUpperCase();
-  const price = resolveUnderlyingPrice(upper, quotes, marketSnapshot, seededFallbackPrice);
+  const price = resolveDisplayPrice(upper, quotes, marketSnapshot);
   const live = quotes[upper];
   const snap = marketSnapshot?.quotes?.[upper];
-
-  if (live?.c && !snap?.c) {
-    return live;
-  }
 
   return {
     c: price,
     d: live?.d ?? 0,
     dp: snap?.dp ?? live?.dp ?? 0,
     pc: live?.pc ?? price,
+    _simulated: !snap?.c && Boolean(live?._simulated),
   };
 }
 
@@ -92,7 +80,9 @@ export default function StockDetail() {
       .then((data) => {
         if (!cancelled) {
           setLiveQuote(data);
-          setQuote(upper, data);
+          if (!data._simulated) {
+            setQuote(upper, data);
+          }
         }
       })
       .finally(() => {
@@ -104,7 +94,13 @@ export default function StockDetail() {
     };
   }, [hasSyncedMarks, isQuoteRefreshPaused, setQuote, upper]);
 
-  const headerQuote = hasSyncedMarks ? displayQuote : (liveQuote || displayQuote);
+  const headerQuote = hasSyncedMarks
+    ? displayQuote
+    : (liveQuote && !liveQuote._simulated ? liveQuote : displayQuote);
+
+  const chartAnchorPrice = hasSyncedMarks || !headerQuote?._simulated
+    ? headerQuote?.c
+    : null;
 
   return (
     <div className="section-gap" style={{ paddingTop: 16 }}>
@@ -116,6 +112,12 @@ export default function StockDetail() {
       {hasSyncedMarks && (
         <div className="banner banner-info" style={{ marginBottom: 0 }}>
           Price and option premiums use your synced portfolio marks so they match across devices.
+        </div>
+      )}
+
+      {headerQuote?._simulated && !hasSyncedMarks && (
+        <div className="banner banner-warning" style={{ marginBottom: 0 }}>
+          Live quote unavailable — showing approximate price. Sync or wait for market data to recover.
         </div>
       )}
 
@@ -164,7 +166,7 @@ export default function StockDetail() {
 
       {tab === 'chart' ? (
         <>
-          <StockChart symbol={upper} livePrice={headerQuote?.c} />
+          <StockChart symbol={upper} livePrice={chartAnchorPrice} />
           <StockPositionCard position={position} quote={headerQuote} symbol={upper} />
           <WhatIfCalculator
             symbol={upper}

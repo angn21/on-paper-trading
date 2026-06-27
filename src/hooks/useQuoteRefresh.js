@@ -41,13 +41,13 @@ export function useQuoteRefresh() {
       await Promise.all(
         [...symbols].map(async (symbol) => {
           try {
-            const [quote, sigma] = await Promise.all([
+            const [quote, volResult] = await Promise.all([
               marketData.getQuote(symbol),
               marketData.getVolatility(symbol),
             ]);
             if (!cancelled) {
               setQuote(symbol, quote);
-              setVolatility(symbol, sigma);
+              setVolatility(symbol, volResult);
               priceMap[symbol] = quote;
             }
           } catch {

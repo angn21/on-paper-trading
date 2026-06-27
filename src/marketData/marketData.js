@@ -371,14 +371,14 @@ async function twelveDataCandles(symbol, range) {
 async function estimateVolatility(symbol) {
   const upper = symbol.toUpperCase();
   const cached = getCachedVolatility(upper);
-  if (cached != null) return cached;
+  if (cached != null) return { sigma: cached, reliable: true };
 
   for (const range of ['W', 'M']) {
     const candles = getCachedCandles(upper, range);
     if (candles?.c?.length >= 10) {
       const sigma = realizedVolatility(candles.c.slice(-30));
       setCachedVolatility(upper, sigma);
-      return sigma;
+      return { sigma, reliable: true };
     }
   }
 
@@ -394,13 +394,13 @@ async function estimateVolatility(symbol) {
       const closes = [...data.values].reverse().map((bar) => Number(bar.close));
       const sigma = realizedVolatility(closes);
       setCachedVolatility(upper, sigma);
-      return sigma;
+      return { sigma, reliable: true };
     }
   } catch {
     // Fall back to default below.
   }
 
-  return DEFAULT_SIGMA;
+  return { sigma: DEFAULT_SIGMA, reliable: false };
 }
 
 async function liveMarketStatus() {
@@ -539,7 +539,7 @@ export const marketData = {
     try {
       return await estimateVolatility(symbol.toUpperCase());
     } catch {
-      return DEFAULT_SIGMA;
+      return { sigma: DEFAULT_SIGMA, reliable: false };
     }
   },
 

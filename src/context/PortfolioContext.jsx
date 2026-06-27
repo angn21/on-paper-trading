@@ -34,6 +34,7 @@ export function PortfolioProvider({ children }) {
   });
   const [quotes, setQuotes] = useState({});
   const [volatility, setVolatilityState] = useState({});
+  const [volatilityReliability, setVolatilityReliability] = useState({});
   const [priceHistory, setPriceHistory] = useState({});
   const lastSnapshotRef = useRef(0);
   const quoteRefreshPausedUntilRef = useRef(0);
@@ -53,6 +54,7 @@ export function PortfolioProvider({ children }) {
     Object.entries(snapshot.volatility || {}).forEach(([symbol, sigma]) => {
       const upper = symbol.toUpperCase();
       setVolatilityState((prev) => ({ ...prev, [upper]: sigma }));
+      setVolatilityReliability((prev) => ({ ...prev, [upper]: true }));
     });
   }, [state.marketSnapshot]);
 
@@ -103,8 +105,18 @@ export function PortfolioProvider({ children }) {
     }
   }, []);
 
-  const setVolatility = useCallback((symbol, sigma) => {
-    setVolatilityState((prev) => ({ ...prev, [symbol.toUpperCase()]: sigma }));
+  const setVolatility = useCallback((symbol, sigmaOrResult, reliable = true) => {
+    const upper = symbol.toUpperCase();
+    let sigma = sigmaOrResult;
+    let isReliable = reliable;
+
+    if (sigmaOrResult && typeof sigmaOrResult === 'object' && 'sigma' in sigmaOrResult) {
+      sigma = sigmaOrResult.sigma;
+      isReliable = sigmaOrResult.reliable;
+    }
+
+    setVolatilityState((prev) => ({ ...prev, [upper]: sigma }));
+    setVolatilityReliability((prev) => ({ ...prev, [upper]: isReliable }));
   }, []);
 
   const toggleWatchlist = useCallback((symbol) => {
@@ -478,6 +490,7 @@ export function PortfolioProvider({ children }) {
     });
     setQuotes({});
     setVolatilityState({});
+    setVolatilityReliability({});
   }, []);
 
   const computed = useMemo(() => {
@@ -511,7 +524,12 @@ export function PortfolioProvider({ children }) {
         state.marketSnapshot,
         seededFallbackPrice,
       );
-      const sigma = resolveVolatility(position.symbol, volatility, state.marketSnapshot);
+      const sigma = resolveVolatility(
+        position.symbol,
+        volatility,
+        state.marketSnapshot,
+        volatilityReliability,
+      );
       const pricing = priceOptionPosition(position, underlying, sigma);
       return { ...position, underlying, ...pricing };
     });
@@ -556,7 +574,7 @@ export function PortfolioProvider({ children }) {
         totalTrades: state.transactions.length,
       },
     };
-  }, [quotes, state, volatility]);
+  }, [quotes, state, volatility, volatilityReliability]);
 
   const value = {
     ...state,
@@ -564,6 +582,7 @@ export function PortfolioProvider({ children }) {
     portfolioState: state,
     quotes,
     volatility,
+    volatilityReliability,
     priceHistory,
     setQuote,
     setVolatility,

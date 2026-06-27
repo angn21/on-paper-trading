@@ -16,7 +16,7 @@ function seededFallbackPrice(symbol) {
 }
 
 export default function OptionsChain({ symbol }) {
-  const { quotes, volatility, portfolioState } = usePortfolio();
+  const { quotes, volatility, volatilityReliability, portfolioState } = usePortfolio();
   const upper = symbol?.toUpperCase();
 
   const underlyingPrice = resolveUnderlyingPrice(
@@ -25,7 +25,12 @@ export default function OptionsChain({ symbol }) {
     portfolioState.marketSnapshot,
     seededFallbackPrice,
   );
-  const sigma = resolveVolatility(upper, volatility, portfolioState.marketSnapshot);
+  const sigma = resolveVolatility(
+    upper,
+    volatility,
+    portfolioState.marketSnapshot,
+    volatilityReliability,
+  );
 
   const chain = useMemo(
     () => generateOptionsChain(symbol, underlyingPrice, sigma),
@@ -46,6 +51,9 @@ export default function OptionsChain({ symbol }) {
       <div className="banner banner-warning">
         Option premiums are model-derived (Black-Scholes) using {formatVolatilityPercent(sigma)}{' '}
         30-day realized volatility — not live option quotes.
+        {volatilityReliability[upper] === false && !portfolioState.marketSnapshot?.volatility?.[upper] && (
+          <> Volatility is approximate until synced or calculated from price history.</>
+        )}
       </div>
 
       <div className="card">
