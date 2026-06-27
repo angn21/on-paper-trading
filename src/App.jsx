@@ -1,3 +1,4 @@
+import { Analytics } from '@vercel/analytics/react';
 import { SpeedInsights } from '@vercel/speed-insights/react';
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
 import ErrorBoundary from './components/ErrorBoundary';
@@ -30,6 +31,7 @@ export default function App() {
           </PortfolioProvider>
         </ToastProvider>
       </ThemeProvider>
+      <Analytics />
       <SpeedInsights />
     </ErrorBoundary>
   );
