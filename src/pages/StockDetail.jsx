@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link, useParams, useSearchParams } from 'react-router-dom';
 import ApiBanner from '../components/ApiBanner';
 import OfflineBanner from '../components/OfflineBanner';
@@ -46,16 +46,11 @@ export default function StockDetail() {
     toggleWatchlist,
     setQuote,
     isQuoteRefreshPaused,
-    refreshVolatility,
   } = usePortfolio();
   const [liveQuote, setLiveQuote] = useState(null);
   const [loading, setLoading] = useState(true);
 
   useSymbolVolatility(upper);
-
-  const handleCandlesLoaded = useCallback(() => {
-    refreshVolatility(upper);
-  }, [refreshVolatility, upper]);
 
   const hasSyncedMarks = hasSyncedMarksForSymbol(upper, portfolioState.marketSnapshot);
 
@@ -174,7 +169,7 @@ export default function StockDetail() {
 
       {tab === 'chart' ? (
         <>
-          <StockChart symbol={upper} livePrice={chartAnchorPrice} onCandlesLoaded={handleCandlesLoaded} />
+          <StockChart symbol={upper} livePrice={chartAnchorPrice} />
           <StockPositionCard position={position} quote={headerQuote} symbol={upper} />
           <WhatIfCalculator
             symbol={upper}

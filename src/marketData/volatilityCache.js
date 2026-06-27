@@ -2,7 +2,7 @@
  * Cache estimated volatility per symbol (24h) to avoid extra Twelve Data calls.
  */
 
-const STORAGE_KEY = 'on-paper-volatility-cache-v1';
+const STORAGE_KEY = 'on-paper-volatility-cache-v2';
 const TTL = 24 * 60 * 60 * 1000;
 
 const memory = new Map();

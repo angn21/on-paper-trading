@@ -56,7 +56,7 @@ function snapTradesToChart(trades, chartData) {
     });
 }
 
-export default function StockChart({ symbol, livePrice = null, onCandlesLoaded = null }) {
+export default function StockChart({ symbol, livePrice = null }) {
   const { transactions } = usePortfolio();
   const [range, setRange] = useState('D');
   const [candles, setCandles] = useState(null);
@@ -71,12 +71,7 @@ export default function StockChart({ symbol, livePrice = null, onCandlesLoaded =
     marketData
       .getCandles(symbol, range)
       .then((data) => {
-        if (!cancelled) {
-          setCandles(data);
-          if (onCandlesLoaded && (range === 'W' || range === 'M')) {
-            onCandlesLoaded(range, data);
-          }
-        }
+        if (!cancelled) setCandles(data);
       })
       .catch(() => {
         if (!cancelled) setError('Unable to load chart data.');
@@ -88,7 +83,7 @@ export default function StockChart({ symbol, livePrice = null, onCandlesLoaded =
     return () => {
       cancelled = true;
     };
-  }, [range, symbol, onCandlesLoaded]);
+  }, [range, symbol]);
 
   const data = useMemo(() => {
     if (!candles?.t?.length) return [];

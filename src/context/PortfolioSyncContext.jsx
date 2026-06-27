@@ -54,11 +54,17 @@ async function prepareSyncPayload(state, quotes, volatility, volatilityReliabili
 
     try {
       const volResult = await marketData.getVolatility(upper, { bypassCache: true });
+      const existingVol = state?.marketSnapshot?.volatility?.[upper];
+
       if (volResult.reliable) {
         mergedVol[upper] = volResult.sigma;
         mergedReliability[upper] = true;
+        setVolatility(upper, volResult);
+      } else if (existingVol != null) {
+        mergedVol[upper] = existingVol;
+        mergedReliability[upper] = true;
+        setVolatility(upper, existingVol, true);
       }
-      setVolatility(upper, volResult);
     } catch {
       // Keep any existing volatility for this symbol.
     }

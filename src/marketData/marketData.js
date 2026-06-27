@@ -368,6 +368,35 @@ async function twelveDataCandles(symbol, range) {
   return parsed;
 }
 
+/** Parse Twelve Data daily series; reject intraday/short spans unfit for 30-day vol. */
+function dailyClosesFromSeries(values) {
+  if (!values?.length || values.length < 10) return null;
+
+  const closes = values.map((bar) => Number(bar.close)).filter((c) => c > 0);
+  if (closes.length < 10) return null;
+
+  const firstDate = new Date(String(values[0].datetime).replace(' ', 'T'));
+  const lastDate = new Date(String(values[values.length - 1].datetime).replace(' ', 'T'));
+  const spanDays = (lastDate - firstDate) / 86_400_000;
+
+  // Real daily history spans weeks; intraday/approximate chart data does not.
+  if (!Number.isFinite(spanDays) || spanDays < 15) return null;
+
+  return closes.length > 30 ? closes.slice(-30) : closes;
+}
+
+async function fetchDailyCloses(symbol) {
+  const data = await twelveDataFetch({
+    symbol: symbol.toUpperCase(),
+    interval: '1day',
+    outputsize: 30,
+    order: 'ASC',
+  });
+
+  if (data.status !== 'ok') return null;
+  return dailyClosesFromSeries(data.values);
+}
+
 async function estimateVolatility(symbol, { bypassCache = false } = {}) {
   const upper = symbol.toUpperCase();
 
@@ -376,60 +405,9 @@ async function estimateVolatility(symbol, { bypassCache = false } = {}) {
     if (cached != null) return { sigma: cached, reliable: true };
   }
 
-  // Cloud sync uses a direct daily fetch so every device stores the same σ.
-  if (bypassCache) {
-    try {
-      const data = await twelveDataFetch({
-        symbol: upper,
-        interval: '1day',
-        outputsize: 30,
-        order: 'ASC',
-      });
-
-      if (data.status === 'ok' && data.values?.length >= 10) {
-        const closes = [...data.values].reverse().map((bar) => Number(bar.close));
-        const sigma = realizedVolatility(closes);
-        if (sigma != null) {
-          setCachedVolatility(upper, sigma);
-          return { sigma, reliable: true };
-        }
-      }
-    } catch {
-      // Fall back to default below.
-    }
-
-    return { sigma: DEFAULT_SIGMA, reliable: false };
-  }
-
-  for (const range of ['M', 'W']) {
-    let candles = getCachedCandles(upper, range);
-    if (!candles?.c || candles.c.length < 10) {
-      try {
-        candles = await twelveDataCandles(upper, range);
-      } catch {
-        candles = null;
-      }
-    }
-
-    if (candles?.c?.length >= 10) {
-      const sigma = realizedVolatility(candles.c.length > 30 ? candles.c.slice(-30) : candles.c);
-      if (sigma != null) {
-        setCachedVolatility(upper, sigma);
-        return { sigma, reliable: true };
-      }
-    }
-  }
-
   try {
-    const data = await twelveDataFetch({
-      symbol: upper,
-      interval: '1day',
-      outputsize: 30,
-      order: 'ASC',
-    });
-
-    if (data.status === 'ok' && data.values?.length >= 10) {
-      const closes = [...data.values].reverse().map((bar) => Number(bar.close));
+    const closes = await fetchDailyCloses(upper);
+    if (closes) {
       const sigma = realizedVolatility(closes);
       if (sigma != null) {
         setCachedVolatility(upper, sigma);
