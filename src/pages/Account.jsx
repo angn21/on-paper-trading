@@ -55,7 +55,7 @@ export default function Account() {
         <section className="card">
           <h1 style={{ margin: '0 0 8px', fontSize: '1.4rem' }}>Account</h1>
           <p style={{ color: 'var(--text-muted)', marginTop: 0 }}>
-            Signed in as <strong>{user.username}</strong>. Your portfolio syncs to the cloud automatically.
+            Signed in as <strong>{user.username}</strong>. Your portfolio syncs to the cloud automatically (~2s after changes).
           </p>
           <button type="button" className="btn btn-ghost" onClick={() => logout()}>
             Sign out

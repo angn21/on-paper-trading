@@ -40,6 +40,18 @@ export function loadLocalPortfolio() {
 
 export function saveLocalPortfolio(state) {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  localStorage.setItem(`${STORAGE_KEY}-updated`, String(Date.now()));
+}
+
+export function getLocalPortfolioUpdatedAt() {
+  const stored = Number(localStorage.getItem(`${STORAGE_KEY}-updated`) || 0);
+  if (stored) return stored;
+
+  const local = loadLocalPortfolio();
+  const latestTx = local.transactions?.[0]?.ts;
+  if (latestTx) return latestTx;
+
+  return 0;
 }
 
 export function hasPortfolioActivity(state) {
