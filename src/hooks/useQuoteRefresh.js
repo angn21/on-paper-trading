@@ -2,12 +2,17 @@ import { useEffect, useRef } from 'react';
 import { marketData } from '../marketData/marketData';
 import { usePortfolioContext } from '../context/PortfolioContext';
 
+function snapshotHasVol(symbol, marketSnapshot) {
+  return marketSnapshot?.volatility?.[symbol.toUpperCase()] != null;
+}
+
 export function useQuoteRefresh() {
   const {
     positions,
     options,
     watchlist,
     pendingOrders,
+    portfolioState,
     setQuote,
     setVolatility,
     processPendingOrders,
@@ -40,15 +45,19 @@ export function useQuoteRefresh() {
 
       await Promise.all(
         [...symbols].map(async (symbol) => {
+          const upper = symbol.toUpperCase();
+          const skipVol = snapshotHasVol(upper, portfolioState.marketSnapshot);
+
           try {
-            const [quote, volResult] = await Promise.all([
-              marketData.getQuote(symbol),
-              marketData.getVolatility(symbol),
-            ]);
+            const quote = await marketData.getQuote(symbol);
             if (!cancelled) {
               setQuote(symbol, quote);
-              setVolatility(symbol, volResult);
               priceMap[symbol] = quote;
+            }
+
+            if (!skipVol) {
+              const volResult = await marketData.getVolatility(symbol);
+              if (!cancelled) setVolatility(symbol, volResult);
             }
           } catch {
             // Handled in marketData fallback.
@@ -80,6 +89,7 @@ export function useQuoteRefresh() {
   }, [
     options,
     pendingOrders,
+    portfolioState.marketSnapshot,
     positions,
     processPendingOrders,
     setQuote,

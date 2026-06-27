@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { generateOptionsChain } from '../lib/blackScholes';
 import { DEFAULT_SIGMA, formatVolatilityPercent } from '../lib/volatility';
-import { resolveUnderlyingPrice, resolveVolatility } from '../lib/portfolioStorage';
+import { resolveUnderlyingPrice, resolveVolatility, hasSyncedMarksForSymbol } from '../lib/portfolioStorage';
 import { usePortfolio } from '../hooks/usePortfolio';
 import { useSymbolVolatility } from '../hooks/useSymbolVolatility';
 import { formatCurrency } from '../lib/formatters';
@@ -49,9 +49,16 @@ export default function OptionsChain({ symbol }) {
   const activeChain = chain.find((item) => item.expiry === activeExpiry);
   const rows = activeChain ? activeChain[type === 'call' ? 'calls' : 'puts'] : [];
   const volIsFallback = volatilityReliability[upper] === false && sigma === DEFAULT_SIGMA;
+  const hasSyncedMarks = hasSyncedMarksForSymbol(upper, portfolioState.marketSnapshot);
 
   return (
     <div className="section-gap">
+      {hasSyncedMarks && (
+        <div className="banner banner-info">
+          Price and option premiums use your synced portfolio marks so they match across devices.
+        </div>
+      )}
+
       <div className="banner banner-warning">
         Option premiums are model-derived (Black-Scholes) using {formatVolatilityPercent(sigma)}{' '}
         30-day realized volatility — not live option quotes.

@@ -123,10 +123,17 @@ export function PortfolioProvider({ children }) {
   const refreshVolatility = useCallback(async (symbol) => {
     const upper = symbol?.toUpperCase();
     if (!upper) return null;
+
+    const snap = state.marketSnapshot;
+    if (snap?.volatility?.[upper] != null) {
+      setVolatility(upper, snap.volatility[upper], true);
+      return { sigma: snap.volatility[upper], reliable: true };
+    }
+
     const result = await marketData.getVolatility(upper);
     setVolatility(upper, result);
     return result;
-  }, [setVolatility]);
+  }, [setVolatility, state.marketSnapshot]);
 
   const toggleWatchlist = useCallback((symbol) => {
     const upper = symbol.toUpperCase();

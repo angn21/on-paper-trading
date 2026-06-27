@@ -53,7 +53,7 @@ async function prepareSyncPayload(state, quotes, volatility, volatilityReliabili
     }
 
     try {
-      const volResult = await marketData.getVolatility(upper);
+      const volResult = await marketData.getVolatility(upper, { bypassCache: true });
       if (volResult.reliable) {
         mergedVol[upper] = volResult.sigma;
         mergedReliability[upper] = true;

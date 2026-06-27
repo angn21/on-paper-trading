@@ -368,10 +368,38 @@ async function twelveDataCandles(symbol, range) {
   return parsed;
 }
 
-async function estimateVolatility(symbol) {
+async function estimateVolatility(symbol, { bypassCache = false } = {}) {
   const upper = symbol.toUpperCase();
-  const cached = getCachedVolatility(upper);
-  if (cached != null) return { sigma: cached, reliable: true };
+
+  if (!bypassCache) {
+    const cached = getCachedVolatility(upper);
+    if (cached != null) return { sigma: cached, reliable: true };
+  }
+
+  // Cloud sync uses a direct daily fetch so every device stores the same σ.
+  if (bypassCache) {
+    try {
+      const data = await twelveDataFetch({
+        symbol: upper,
+        interval: '1day',
+        outputsize: 30,
+        order: 'ASC',
+      });
+
+      if (data.status === 'ok' && data.values?.length >= 10) {
+        const closes = [...data.values].reverse().map((bar) => Number(bar.close));
+        const sigma = realizedVolatility(closes);
+        if (sigma != null) {
+          setCachedVolatility(upper, sigma);
+          return { sigma, reliable: true };
+        }
+      }
+    } catch {
+      // Fall back to default below.
+    }
+
+    return { sigma: DEFAULT_SIGMA, reliable: false };
+  }
 
   for (const range of ['M', 'W']) {
     let candles = getCachedCandles(upper, range);
@@ -547,9 +575,9 @@ export const marketData = {
   },
 
   /** 30-day realized volatility from daily closes (cached 24h). */
-  async getVolatility(symbol) {
+  async getVolatility(symbol, { bypassCache = false } = {}) {
     try {
-      return await estimateVolatility(symbol.toUpperCase());
+      return await estimateVolatility(symbol.toUpperCase(), { bypassCache });
     } catch {
       return { sigma: DEFAULT_SIGMA, reliable: false };
     }

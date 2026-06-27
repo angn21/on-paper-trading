@@ -1,14 +1,19 @@
 import { useEffect } from 'react';
+import { hasSyncedMarksForSymbol } from '../lib/portfolioStorage';
 import { marketData } from '../marketData/marketData';
 import { usePortfolio } from './usePortfolio';
 
-/** Fetch 30-day realized vol for a symbol (options tab, stock detail, etc.). */
+/**
+ * Fetch 30-day realized vol for symbols without synced cloud marks.
+ * When marketSnapshot already has quote + vol, devices use that for consistency.
+ */
 export function useSymbolVolatility(symbol) {
-  const { setVolatility } = usePortfolio();
+  const { setVolatility, portfolioState } = usePortfolio();
+  const hasSynced = hasSyncedMarksForSymbol(symbol, portfolioState.marketSnapshot);
 
   useEffect(() => {
     const upper = symbol?.toUpperCase();
-    if (!upper) return undefined;
+    if (!upper || hasSynced) return undefined;
 
     let cancelled = false;
 
@@ -22,5 +27,5 @@ export function useSymbolVolatility(symbol) {
     return () => {
       cancelled = true;
     };
-  }, [symbol, setVolatility]);
+  }, [symbol, hasSynced, setVolatility]);
 }
