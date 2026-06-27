@@ -60,6 +60,48 @@
   color: var(--accent);
 }
 
+.indices-banner {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  padding-bottom: 10px;
+  border-top: 1px solid var(--border);
+  padding-top: 10px;
+}
+
+.indices-tile {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: var(--surface-2);
+  min-width: 0;
+  transition: background 0.15s ease;
+}
+
+.indices-tile:hover {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.indices-label {
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.indices-price {
+  font-size: 0.95rem;
+  font-weight: 700;
+}
+
+.indices-change {
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+
 .bottom-nav {
   position: fixed;
   left: 50%;

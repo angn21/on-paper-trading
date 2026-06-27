@@ -5,6 +5,7 @@ import { useTheme } from '../context/ThemeContext';
 import { useKeyboardShortcuts } from '../hooks/useKeyboardShortcuts';
 import { marketData } from '../marketData/marketData';
 import Toast from './Toast';
+import MarketIndicesBanner from './MarketIndicesBanner';
 import './Layout.css';
 
 export default function Layout() {
@@ -36,6 +37,7 @@ export default function Layout() {
             </NavLink>
           </div>
         </div>
+        <MarketIndicesBanner />
       </header>
 
       <main className="app-content">
