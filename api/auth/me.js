@@ -1,7 +1,6 @@
 import { handleMe } from '../../server/auth/handlers.js';
+import { createNodeHandler } from '../lib/vercelNodeAdapter.js';
 
 export const config = { runtime: 'nodejs' };
 
-export default function handler(request) {
-  return handleMe(request);
-}
+export default createNodeHandler(handleMe);

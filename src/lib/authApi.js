@@ -6,16 +6,35 @@ async function parseJson(response) {
   }
 }
 
+async function authFetch(url, options = {}) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 20_000);
+
+  try {
+    return await fetch(url, {
+      ...options,
+      credentials: 'include',
+      signal: controller.signal,
+    });
+  } catch (error) {
+    if (error.name === 'AbortError') {
+      throw new Error('Request timed out. Please try again.');
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 export async function fetchMe() {
-  const response = await fetch('/api/auth/me', { credentials: 'include' });
+  const response = await authFetch('/api/auth/me');
   const data = await parseJson(response);
   return data.user ?? null;
 }
 
 export async function registerAccount({ username, pin, importLocal = false, portfolio = null }) {
-  const response = await fetch('/api/auth/register', {
+  const response = await authFetch('/api/auth/register', {
     method: 'POST',
-    credentials: 'include',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ username, pin, importLocal, portfolio }),
   });
@@ -27,9 +46,8 @@ export async function registerAccount({ username, pin, importLocal = false, port
 }
 
 export async function loginAccount({ username, pin }) {
-  const response = await fetch('/api/auth/login', {
+  const response = await authFetch('/api/auth/login', {
     method: 'POST',
-    credentials: 'include',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ username, pin }),
   });
@@ -41,23 +59,19 @@ export async function loginAccount({ username, pin }) {
 }
 
 export async function logoutAccount() {
-  await fetch('/api/auth/logout', {
-    method: 'POST',
-    credentials: 'include',
-  });
+  await authFetch('/api/auth/logout', { method: 'POST' });
 }
 
 export async function fetchRemotePortfolio() {
-  const response = await fetch('/api/portfolio', { credentials: 'include' });
+  const response = await authFetch('/api/portfolio');
   if (response.status === 401) return null;
   if (!response.ok) throw new Error('Could not load cloud portfolio.');
   return parseJson(response);
 }
 
 export async function saveRemotePortfolio(data) {
-  const response = await fetch('/api/portfolio', {
+  const response = await authFetch('/api/portfolio', {
     method: 'PUT',
-    credentials: 'include',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ data }),
   });
