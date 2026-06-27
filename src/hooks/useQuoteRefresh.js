@@ -27,8 +27,11 @@ export function useQuoteRefresh() {
     if (!symbols.size) return undefined;
 
     let cancelled = false;
+    let timer;
 
     async function refreshQuotes() {
+      await marketData.getMarketStatus();
+
       const priceMap = {};
 
       await Promise.all(
@@ -55,11 +58,18 @@ export function useQuoteRefresh() {
       }
     }
 
-    refreshQuotes();
-    const interval = setInterval(refreshQuotes, 60_000);
+    async function tick() {
+      if (cancelled) return;
+      await refreshQuotes();
+      if (cancelled) return;
+      timer = setTimeout(tick, marketData.getQuoteRefreshInterval());
+    }
+
+    tick();
+
     return () => {
       cancelled = true;
-      clearInterval(interval);
+      clearTimeout(timer);
     };
   }, [
     options,

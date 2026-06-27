@@ -1,12 +1,18 @@
+import { useEffect } from 'react';
 import { Link, NavLink, Outlet } from 'react-router-dom';
 import { useTheme } from '../context/ThemeContext';
 import { useKeyboardShortcuts } from '../hooks/useKeyboardShortcuts';
+import { marketData } from '../marketData/marketData';
 import Toast from './Toast';
 import './Layout.css';
 
 export default function Layout() {
   const { theme, toggleTheme } = useTheme();
   useKeyboardShortcuts();
+
+  useEffect(() => {
+    marketData.getMarketStatus().catch(() => null);
+  }, []);
 
   return (
     <div className="app-shell">

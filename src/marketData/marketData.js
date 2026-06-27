@@ -8,19 +8,53 @@
 import { getCachedCandles, pruneCandleCache, setCachedCandles } from './candleCache.js';
 import { getCachedVolatility, setCachedVolatility } from './volatilityCache.js';
 import { DEFAULT_SIGMA, realizedVolatility } from '../lib/volatility.js';
+import {
+  getLocalMarketSession,
+  getMarketStatusCacheTTL,
+  getQuoteCacheTTL,
+  getQuoteRefreshInterval,
+  sessionFromFinnhub,
+} from '../lib/marketHours.js';
 
 const FINNHUB_API = '/api/finnhub';
 const TWELVE_DATA_API = '/api/twelvedata';
 
 const CACHE_TTL = {
-  quote: 30_000,
   search: 120_000,
-  marketStatus: 300_000,
 };
 
 const cache = new Map();
 let mode = 'live';
 let liveFailureReason = null;
+
+/** Finnhub session override (holidays, extended hours). Falls back to local ET clock. */
+let holidayOverride = null;
+let finnhubSession = null;
+let finnhubSessionAt = 0;
+
+function getActiveSession() {
+  const local = getLocalMarketSession();
+
+  if (local.tier === 'weekend') {
+    holidayOverride = null;
+    return local;
+  }
+
+  if (holidayOverride) {
+    return {
+      tier: 'weekend',
+      isOpen: false,
+      session: 'closed',
+      holiday: holidayOverride,
+    };
+  }
+
+  if (finnhubSession && Date.now() - finnhubSessionAt < 30 * 60_000) {
+    return finnhubSession;
+  }
+
+  return local;
+}
 
 const SIMULATED_SYMBOLS = [
   { symbol: 'AAPL', description: 'Apple Inc' },
@@ -61,7 +95,7 @@ function getCached(key) {
 }
 
 function setCache(key, value, ttl) {
-  cache.set(key, { value, expiresAt: Date.now() + ttl });
+  cache.set(key, { value, expiresAt: Date.now() + ttl, fetchedAt: Date.now() });
 }
 
 function getStale(key) {
@@ -287,6 +321,7 @@ async function liveSearch(query) {
 async function liveQuote(symbol) {
   const upper = symbol.toUpperCase();
   const cacheKey = `quote:${upper}`;
+  const session = getActiveSession();
   const cached = getCached(cacheKey);
   if (cached) return cached;
 
@@ -299,15 +334,16 @@ async function liveQuote(symbol) {
     data.c = data.pc;
   }
 
-  setCache(cacheKey, data, CACHE_TTL.quote);
+  setCache(cacheKey, data, getQuoteCacheTTL(session));
   return data;
 }
 
 async function twelveDataCandles(symbol, range) {
   const upper = symbol.toUpperCase();
   const config = TWELVE_DATA_RANGE[range] || TWELVE_DATA_RANGE.W;
+  const session = getActiveSession();
 
-  const cached = getCachedCandles(upper, range);
+  const cached = getCachedCandles(upper, range, session);
   if (cached) return cached;
 
   const data = await twelveDataFetch({
@@ -318,7 +354,7 @@ async function twelveDataCandles(symbol, range) {
   });
 
   const parsed = downsampleCandles(parseTwelveDataCandles(data));
-  setCachedCandles(upper, range, parsed);
+  setCachedCandles(upper, range, parsed, session);
   return parsed;
 }
 
@@ -363,31 +399,45 @@ async function liveMarketStatus() {
   if (cached) return cached;
 
   const data = await finnhubFetch('/stock/market-status', { exchange: 'US' });
+  holidayOverride = data.holiday || null;
+  finnhubSession = sessionFromFinnhub(data);
+  finnhubSessionAt = Date.now();
+
   const result = {
-    isOpen: Boolean(data.isOpen),
-    session: data.session || (data.isOpen ? 'open' : 'closed'),
-    note: data.isOpen
+    isOpen: finnhubSession.isOpen,
+    session: finnhubSession.session,
+    tier: finnhubSession.tier,
+    note: finnhubSession.isOpen
       ? 'US market is open.'
-      : 'US market is closed. Paper trading is available anytime in this simulator.',
+      : finnhubSession.tier === 'weekend' && finnhubSession.holiday
+        ? `US market closed (${finnhubSession.holiday}). Paper trading is available anytime.`
+        : finnhubSession.tier === 'weekend'
+          ? 'Weekend — US market is closed. Paper trading is available anytime.'
+          : finnhubSession.tier === 'extended'
+            ? `Extended hours (${finnhubSession.session}). Quotes update less frequently.`
+            : 'US market is closed. Paper trading is available anytime in this simulator.',
   };
 
-  setCache(cacheKey, result, CACHE_TTL.marketStatus);
+  setCache(cacheKey, result, getMarketStatusCacheTTL(finnhubSession));
   return result;
 }
 
 function fallbackMarketStatus() {
-  const now = new Date();
-  const day = now.getUTCDay();
-  const hour = now.getUTCHours() - 5;
-  const isWeekday = day >= 1 && day <= 5;
-  const isOpen = isWeekday && hour >= 9 && hour < 16;
+  const session = getLocalMarketSession();
+  finnhubSession = session;
+  finnhubSessionAt = Date.now();
 
   return {
-    isOpen,
-    session: isOpen ? 'open' : 'closed',
-    note: isOpen
+    isOpen: session.isOpen,
+    session: session.session,
+    tier: session.tier,
+    note: session.isOpen
       ? 'US market appears open (estimated).'
-      : 'US market is closed. Paper trading is available anytime in this simulator.',
+      : session.tier === 'weekend'
+        ? 'Weekend — US market is closed. Paper trading is available anytime.'
+        : session.tier === 'extended'
+          ? `Extended hours (${session.session}, estimated). Quotes update less frequently.`
+          : 'US market is closed. Paper trading is available anytime in this simulator.',
   };
 }
 
@@ -516,5 +566,13 @@ export const marketData = {
       () => fallbackMarketStatus(),
       cacheKey,
     );
+  },
+
+  getMarketSession() {
+    return getActiveSession();
+  },
+
+  getQuoteRefreshInterval() {
+    return getQuoteRefreshInterval(getActiveSession());
   },
 };

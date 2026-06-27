@@ -1,21 +1,11 @@
 /**
  * Persistent candle cache — survives page reloads.
- * Twelve Data charges 1 credit per time_series call, so we cache aggressively:
- * - Y (5yr weekly): 30 days — old bars essentially never change
- * - M: 1 day
- * - W: 4 hours
- * - D (intraday): 5 minutes
+ * TTL is dynamic based on US market session (see marketHours.js).
  */
 
-const STORAGE_KEY = 'on-paper-candle-cache-v1';
+import { getCandleCacheTTL, getLocalMarketSession } from '../lib/marketHours.js';
 
-/** TTL in milliseconds per chart range. */
-export const CANDLE_CACHE_TTL = {
-  Y: 30 * 24 * 60 * 60 * 1000,
-  M: 24 * 60 * 60 * 1000,
-  W: 4 * 60 * 60 * 1000,
-  D: 5 * 60 * 1000,
-};
+const STORAGE_KEY = 'on-paper-candle-cache-v1';
 
 const memory = new Map();
 
@@ -32,7 +22,6 @@ function saveStore(store) {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(store));
   } catch {
-    // Storage full — evict oldest entries.
     const keys = Object.keys(store).sort((a, b) => store[a].fetchedAt - store[b].fetchedAt);
     keys.slice(0, Math.ceil(keys.length / 2)).forEach((key) => delete store[key]);
     try {
@@ -47,9 +36,8 @@ function cacheKey(symbol, range) {
   return `${symbol.toUpperCase()}:${range}`;
 }
 
-export function getCachedCandles(symbol, range) {
+export function getCachedCandles(symbol, range, session = getLocalMarketSession()) {
   const key = cacheKey(symbol, range);
-  const ttl = CANDLE_CACHE_TTL[range] ?? CANDLE_CACHE_TTL.W;
 
   const mem = memory.get(key);
   if (mem && Date.now() < mem.expiresAt) {
@@ -66,9 +54,9 @@ export function getCachedCandles(symbol, range) {
   return null;
 }
 
-export function setCachedCandles(symbol, range, value) {
+export function setCachedCandles(symbol, range, value, session = getLocalMarketSession()) {
   const key = cacheKey(symbol, range);
-  const ttl = CANDLE_CACHE_TTL[range] ?? CANDLE_CACHE_TTL.W;
+  const ttl = getCandleCacheTTL(range, session);
   const entry = {
     value,
     fetchedAt: Date.now(),
