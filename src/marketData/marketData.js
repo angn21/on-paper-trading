@@ -373,12 +373,22 @@ async function estimateVolatility(symbol) {
   const cached = getCachedVolatility(upper);
   if (cached != null) return { sigma: cached, reliable: true };
 
-  for (const range of ['W', 'M']) {
-    const candles = getCachedCandles(upper, range);
+  for (const range of ['M', 'W']) {
+    let candles = getCachedCandles(upper, range);
+    if (!candles?.c || candles.c.length < 10) {
+      try {
+        candles = await twelveDataCandles(upper, range);
+      } catch {
+        candles = null;
+      }
+    }
+
     if (candles?.c?.length >= 10) {
-      const sigma = realizedVolatility(candles.c.slice(-30));
-      setCachedVolatility(upper, sigma);
-      return { sigma, reliable: true };
+      const sigma = realizedVolatility(candles.c.length > 30 ? candles.c.slice(-30) : candles.c);
+      if (sigma != null) {
+        setCachedVolatility(upper, sigma);
+        return { sigma, reliable: true };
+      }
     }
   }
 
@@ -393,8 +403,10 @@ async function estimateVolatility(symbol) {
     if (data.status === 'ok' && data.values?.length >= 10) {
       const closes = [...data.values].reverse().map((bar) => Number(bar.close));
       const sigma = realizedVolatility(closes);
-      setCachedVolatility(upper, sigma);
-      return { sigma, reliable: true };
+      if (sigma != null) {
+        setCachedVolatility(upper, sigma);
+        return { sigma, reliable: true };
+      }
     }
   } catch {
     // Fall back to default below.

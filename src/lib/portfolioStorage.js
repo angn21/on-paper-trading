@@ -224,13 +224,13 @@ export function resolveUnderlyingPrice(symbol, liveQuotes, marketSnapshot, fallb
 
 export function resolveVolatility(symbol, liveVolatility, marketSnapshot, reliability = {}) {
   const upper = symbol.toUpperCase();
-
-  if (marketSnapshot?.volatility?.[upper]) return marketSnapshot.volatility[upper];
-
   const live = liveVolatility[upper];
-  if (live != null && reliability[upper] !== false) {
-    return live;
-  }
+  const liveReliable = live != null && reliability[upper] !== false;
+
+  if (liveReliable) return live;
+
+  const snapVol = marketSnapshot?.volatility?.[upper];
+  if (snapVol != null) return snapVol;
 
   return DEFAULT_SIGMA;
 }

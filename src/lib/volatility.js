@@ -11,7 +11,7 @@ const TRADING_DAYS_PER_YEAR = 252;
  */
 export function realizedVolatility(closes) {
   if (!closes?.length || closes.length < 5) {
-    return DEFAULT_SIGMA;
+    return null;
   }
 
   const returns = [];
@@ -24,7 +24,7 @@ export function realizedVolatility(closes) {
   }
 
   if (returns.length < 4) {
-    return DEFAULT_SIGMA;
+    return null;
   }
 
   const mean = returns.reduce((sum, r) => sum + r, 0) / returns.length;

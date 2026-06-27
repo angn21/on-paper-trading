@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useParams, useSearchParams } from 'react-router-dom';
 import ApiBanner from '../components/ApiBanner';
 import OfflineBanner from '../components/OfflineBanner';
@@ -11,6 +11,7 @@ import TradePanel from '../components/TradePanel';
 import WhatIfCalculator from '../components/WhatIfCalculator';
 import { marketData } from '../marketData/marketData';
 import { usePortfolio } from '../hooks/usePortfolio';
+import { useSymbolVolatility } from '../hooks/useSymbolVolatility';
 import { hasSyncedMarksForSymbol, resolveDisplayPrice } from '../lib/portfolioStorage';
 import { getSector } from '../lib/sectors';
 import { formatCurrency, formatPercent, plClass } from '../lib/formatters';
@@ -45,9 +46,16 @@ export default function StockDetail() {
     toggleWatchlist,
     setQuote,
     isQuoteRefreshPaused,
+    refreshVolatility,
   } = usePortfolio();
   const [liveQuote, setLiveQuote] = useState(null);
   const [loading, setLoading] = useState(true);
+
+  useSymbolVolatility(upper);
+
+  const handleCandlesLoaded = useCallback(() => {
+    refreshVolatility(upper);
+  }, [refreshVolatility, upper]);
 
   const hasSyncedMarks = hasSyncedMarksForSymbol(upper, portfolioState.marketSnapshot);
 
@@ -166,7 +174,7 @@ export default function StockDetail() {
 
       {tab === 'chart' ? (
         <>
-          <StockChart symbol={upper} livePrice={chartAnchorPrice} />
+          <StockChart symbol={upper} livePrice={chartAnchorPrice} onCandlesLoaded={handleCandlesLoaded} />
           <StockPositionCard position={position} quote={headerQuote} symbol={upper} />
           <WhatIfCalculator
             symbol={upper}

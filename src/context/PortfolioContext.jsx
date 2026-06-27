@@ -2,6 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import { priceOptionPosition } from '../lib/blackScholes';
 import { shouldFillOrder } from '../lib/orders';
 import { applyStockTrade, revertStockTransaction } from '../lib/positions';
+import { marketData } from '../marketData/marketData';
 import {
   STARTING_CASH,
   defaultPortfolioState,
@@ -118,6 +119,14 @@ export function PortfolioProvider({ children }) {
     setVolatilityState((prev) => ({ ...prev, [upper]: sigma }));
     setVolatilityReliability((prev) => ({ ...prev, [upper]: isReliable }));
   }, []);
+
+  const refreshVolatility = useCallback(async (symbol) => {
+    const upper = symbol?.toUpperCase();
+    if (!upper) return null;
+    const result = await marketData.getVolatility(upper);
+    setVolatility(upper, result);
+    return result;
+  }, [setVolatility]);
 
   const toggleWatchlist = useCallback((symbol) => {
     const upper = symbol.toUpperCase();
@@ -586,6 +595,7 @@ export function PortfolioProvider({ children }) {
     priceHistory,
     setQuote,
     setVolatility,
+    refreshVolatility,
     toggleWatchlist,
     buyStock,
     sellStock,

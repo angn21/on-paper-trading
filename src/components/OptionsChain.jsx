@@ -1,8 +1,9 @@
 import { useMemo, useState } from 'react';
 import { generateOptionsChain } from '../lib/blackScholes';
-import { formatVolatilityPercent } from '../lib/volatility';
+import { DEFAULT_SIGMA, formatVolatilityPercent } from '../lib/volatility';
 import { resolveUnderlyingPrice, resolveVolatility } from '../lib/portfolioStorage';
 import { usePortfolio } from '../hooks/usePortfolio';
+import { useSymbolVolatility } from '../hooks/useSymbolVolatility';
 import { formatCurrency } from '../lib/formatters';
 import OptionsTradePanel from './OptionsTradePanel';
 
@@ -18,6 +19,8 @@ function seededFallbackPrice(symbol) {
 export default function OptionsChain({ symbol }) {
   const { quotes, volatility, volatilityReliability, portfolioState } = usePortfolio();
   const upper = symbol?.toUpperCase();
+
+  useSymbolVolatility(symbol);
 
   const underlyingPrice = resolveUnderlyingPrice(
     upper,
@@ -45,14 +48,15 @@ export default function OptionsChain({ symbol }) {
   const activeExpiry = expiry || expiries[0] || '';
   const activeChain = chain.find((item) => item.expiry === activeExpiry);
   const rows = activeChain ? activeChain[type === 'call' ? 'calls' : 'puts'] : [];
+  const volIsFallback = volatilityReliability[upper] === false && sigma === DEFAULT_SIGMA;
 
   return (
     <div className="section-gap">
       <div className="banner banner-warning">
         Option premiums are model-derived (Black-Scholes) using {formatVolatilityPercent(sigma)}{' '}
         30-day realized volatility — not live option quotes.
-        {volatilityReliability[upper] === false && !portfolioState.marketSnapshot?.volatility?.[upper] && (
-          <> Volatility is approximate until synced or calculated from price history.</>
+        {volIsFallback && (
+          <> Could not load price history — using {formatVolatilityPercent(DEFAULT_SIGMA)} default until data is available.</>
         )}
       </div>
 
