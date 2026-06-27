@@ -10,7 +10,8 @@
     "preview": "vite preview",
     "db:health": "node scripts/db-query.mjs health",
     "db:users": "node scripts/db-query.mjs users",
-    "db:portfolio": "node scripts/db-query.mjs portfolio"
+    "db:portfolio": "node scripts/db-query.mjs portfolio",
+    "db:grant-cash": "node scripts/db-query.mjs grant-cash"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.108.2",

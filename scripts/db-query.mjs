@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
+import { defaultPortfolioState, sanitizePortfolioState } from '../server/auth/portfolioState.js';
 import { loadEnv } from './load-env.mjs';
 
 loadEnv();
@@ -12,7 +13,20 @@ if (!url || !key) {
 }
 
 const sb = createClient(url, key, { auth: { persistSession: false } });
-const [command, arg] = process.argv.slice(2);
+const [command, arg, extraArg] = process.argv.slice(2);
+
+async function findUser(username) {
+  if (!username) return null;
+
+  const { data: profile, error } = await sb
+    .from('profiles')
+    .select('id, username')
+    .eq('username_lower', username.toLowerCase())
+    .maybeSingle();
+
+  if (error) throw error;
+  return profile;
+}
 
 async function listUsers() {
   const { data, error } = await sb
@@ -37,13 +51,7 @@ async function showPortfolio(username) {
     process.exit(1);
   }
 
-  const { data: profile, error: profileError } = await sb
-    .from('profiles')
-    .select('id, username')
-    .eq('username_lower', username.toLowerCase())
-    .maybeSingle();
-
-  if (profileError) throw profileError;
+  const profile = await findUser(username);
   if (!profile) {
     console.error(`User not found: ${username}`);
     process.exit(1);
@@ -62,6 +70,58 @@ async function showPortfolio(username) {
   console.log(JSON.stringify(portfolio?.data || {}, null, 2));
 }
 
+async function grantCash(username, amountRaw) {
+  if (!username || amountRaw === undefined) {
+    console.error('Usage: npm run db:grant-cash -- <username> <amount>');
+    console.error('Example: npm run db:grant-cash -- anmol 50000');
+    process.exit(1);
+  }
+
+  const amount = Number(amountRaw);
+  if (!Number.isFinite(amount) || amount <= 0) {
+    console.error('Amount must be a positive number.');
+    process.exit(1);
+  }
+
+  const profile = await findUser(username);
+  if (!profile) {
+    console.error(`User not found: ${username}`);
+    process.exit(1);
+  }
+
+  const { data: existing, error: loadError } = await sb
+    .from('portfolios')
+    .select('data')
+    .eq('user_id', profile.id)
+    .maybeSingle();
+
+  if (loadError) throw loadError;
+
+  const current = sanitizePortfolioState(existing?.data || defaultPortfolioState);
+  const nextCash = Math.round((current.cash + amount) * 100) / 100;
+  const nextData = sanitizePortfolioState({ ...current, cash: nextCash });
+
+  const { data: saved, error: saveError } = await sb
+    .from('portfolios')
+    .upsert(
+      {
+        user_id: profile.id,
+        data: nextData,
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: 'user_id' },
+    )
+    .select('updated_at')
+    .single();
+
+  if (saveError) throw saveError;
+
+  console.log(`Granted $${amount.toLocaleString()} to ${profile.username}`);
+  console.log(`Cash: $${current.cash.toLocaleString()} → $${nextCash.toLocaleString()}`);
+  console.log(`Cloud updated: ${saved.updated_at}`);
+  console.log('User will see this after sync (auto ~15s, or Account → Sync now).');
+}
+
 async function healthCheck() {
   const { data, error } = await sb.from('profiles').select('id').limit(1);
   if (error) throw error;
@@ -69,18 +129,20 @@ async function healthCheck() {
 }
 
 const commands = {
+  health: healthCheck,
   users: listUsers,
   portfolio: () => showPortfolio(arg),
-  health: healthCheck,
+  'grant-cash': () => grantCash(arg, extraArg),
 };
 
 if (!command || !commands[command]) {
   console.log(`Usage: node scripts/db-query.mjs <command>
 
 Commands:
-  health              Ping Supabase
-  users               List accounts
-  portfolio <user>    Show cloud portfolio JSON
+  health                      Ping Supabase
+  users                       List accounts
+  portfolio <user>            Show cloud portfolio JSON
+  grant-cash <user> <amount>  Add cash to a user's cloud portfolio
 `);
   process.exit(command ? 1 : 0);
 }

@@ -14,6 +14,14 @@ npm run db:users               # list accounts
 npm run db:portfolio -- anmol  # dump cloud portfolio JSON + updated_at
 ```
 
+Grant extra paper money (writes directly to Supabase — local `.env` service role only):
+
+```powershell
+npm run db:grant-cash -- anmol 50000
+```
+
+The user picks it up on next sync (~15s) or **Account → Sync now**. Only you can run this from your machine.
+
 Useful when checking whether watchlist/trades actually reached the cloud.
 
 ## Vercel CLI

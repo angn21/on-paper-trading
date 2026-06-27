@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import {
   Area,
   AreaChart,
@@ -8,41 +8,29 @@ import {
   YAxis,
 } from 'recharts';
 import { usePortfolio } from '../../hooks/usePortfolio';
+import {
+  formatChartTick,
+  formatChartTooltipLabel,
+  historyToChartPoints,
+} from '../../lib/chartLabels';
 import { formatCurrency } from '../../lib/formatters';
 
 const RANGES = ['D', 'W', 'M', 'Y'];
-
-function filterHistory(history, range) {
-  if (!history.length) return [];
-  const now = Date.now();
-  const windows = {
-    D: 24 * 3600 * 1000,
-    W: 7 * 24 * 3600 * 1000,
-    M: 30 * 24 * 3600 * 1000,
-    Y: 365 * 24 * 3600 * 1000,
-  };
-  const cutoff = now - windows[range];
-  const filtered = history.filter((point) => point.ts >= cutoff);
-  return filtered.length ? filtered : history.slice(-20);
-}
+const WINDOWS = {
+  D: 24 * 3600 * 1000,
+  W: 7 * 24 * 3600 * 1000,
+  M: 30 * 24 * 3600 * 1000,
+  Y: 365 * 24 * 3600 * 1000,
+};
 
 export default function PortfolioChart() {
   const { portfolioHistory } = usePortfolio();
   const [range, setRange] = useState('M');
 
-  useEffect(() => {
-    if (portfolioHistory.length === 0) {
-      // Seed a starting point so the chart isn't empty on first load.
-    }
-  }, [portfolioHistory.length]);
-
-  const data = useMemo(() => {
-    return filterHistory(portfolioHistory, range).map((point) => ({
-      ts: point.ts,
-      label: new Date(point.ts).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
-      value: point.totalValue,
-    }));
-  }, [portfolioHistory, range]);
+  const data = useMemo(
+    () => historyToChartPoints(portfolioHistory, range, WINDOWS),
+    [portfolioHistory, range],
+  );
 
   if (!data.length) {
     return (
@@ -80,7 +68,15 @@ export default function PortfolioChart() {
                 <stop offset="100%" stopColor="#1ED760" stopOpacity={0.02} />
               </linearGradient>
             </defs>
-            <XAxis dataKey="label" tick={{ fill: '#8E8E93', fontSize: 11 }} axisLine={false} tickLine={false} />
+            <XAxis
+              dataKey="ts"
+              type="number"
+              domain={['dataMin', 'dataMax']}
+              tickFormatter={(ts) => formatChartTick(ts, data, range)}
+              tick={{ fill: '#8E8E93', fontSize: 11 }}
+              axisLine={false}
+              tickLine={false}
+            />
             <YAxis
               domain={['auto', 'auto']}
               tick={{ fill: '#8E8E93', fontSize: 11 }}
@@ -92,6 +88,7 @@ export default function PortfolioChart() {
             <Tooltip
               contentStyle={{ background: '#16161D', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 12 }}
               labelStyle={{ color: '#8E8E93' }}
+              labelFormatter={formatChartTooltipLabel}
               formatter={(value) => [formatCurrency(value), 'Value']}
             />
             <Area type="monotone" dataKey="value" stroke="#1ED760" fill="url(#portfolioFill)" strokeWidth={2} />

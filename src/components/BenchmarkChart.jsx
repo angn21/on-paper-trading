@@ -7,6 +7,7 @@ import {
   YAxis,
 } from 'recharts';
 import { useMemo } from 'react';
+import { formatChartTick, formatChartTooltipLabel } from '../lib/chartLabels';
 
 export default function BenchmarkChart({ portfolioHistory, benchmarkHistory }) {
   const data = useMemo(() => {
@@ -17,9 +18,8 @@ export default function BenchmarkChart({ portfolioHistory, benchmarkHistory }) {
 
     return portfolioHistory.map((point, i) => {
       const bench = benchmarkHistory?.[i];
-      const label = new Date(point.ts).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
       return {
-        label,
+        ts: point.ts,
         portfolio: ((point.totalValue / startPortfolio) - 1) * 100,
         spy: bench?.spyPrice ? ((bench.spyPrice / startSpy) - 1) * 100 : null,
       };
@@ -34,9 +34,19 @@ export default function BenchmarkChart({ portfolioHistory, benchmarkHistory }) {
       <div style={{ width: '100%', height: 200 }}>
         <ResponsiveContainer>
           <LineChart data={data}>
-            <XAxis dataKey="label" tick={{ fontSize: 10 }} stroke="var(--text-muted)" />
+            <XAxis
+              dataKey="ts"
+              type="number"
+              domain={['dataMin', 'dataMax']}
+              tickFormatter={(ts) => formatChartTick(ts, data, 'M')}
+              tick={{ fontSize: 10 }}
+              stroke="var(--text-muted)"
+            />
             <YAxis tickFormatter={(v) => `${v.toFixed(0)}%`} tick={{ fontSize: 10 }} stroke="var(--text-muted)" width={40} />
-            <Tooltip formatter={(v) => `${Number(v).toFixed(2)}%`} />
+            <Tooltip
+              labelFormatter={formatChartTooltipLabel}
+              formatter={(v) => `${Number(v).toFixed(2)}%`}
+            />
             <Line type="monotone" dataKey="portfolio" stroke="var(--accent)" dot={false} strokeWidth={2} name="Portfolio" />
             <Line type="monotone" dataKey="spy" stroke="#888" dot={false} strokeWidth={1.5} name="SPY" strokeDasharray="4 4" />
           </LineChart>
