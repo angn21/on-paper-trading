@@ -4,11 +4,27 @@ import {
   defaultPortfolioState,
   pickSyncPayload,
 } from '../lib/portfolioStorage';
+import { marketData } from '../marketData/marketData';
 import { useAuth } from './AuthContext';
 import { usePortfolioContext } from './PortfolioContext';
 
 const PortfolioSyncContext = createContext(null);
 const PULL_INTERVAL_MS = 15_000;
+
+function portfolioSymbols(state) {
+  const symbols = new Set([
+    ...Object.keys(state?.positions || {}),
+    ...(state?.options || []).map((o) => o.symbol),
+    ...(state?.watchlist || []),
+    ...(state?.pendingOrders || []).map((o) => o.symbol),
+    'SPY',
+  ]);
+  return [...symbols];
+}
+
+function refreshMarketDataForPortfolio(state) {
+  marketData.invalidateQuotes(portfolioSymbols(state));
+}
 
 function fingerprint(state) {
   return JSON.stringify(pickSyncPayload(state));
@@ -26,7 +42,7 @@ function isRemoteNewer(remoteUpdatedAt, knownUpdatedAt) {
 
 export function PortfolioSyncProvider({ children }) {
   const { user, loading: authLoading } = useAuth();
-  const { portfolioState, replacePortfolioState } = usePortfolioContext();
+  const { portfolioState, replacePortfolioState, invalidateMarketQuotes } = usePortfolioContext();
   const [syncReady, setSyncReady] = useState(false);
   const [cloudUpdatedAt, setCloudUpdatedAt] = useState(null);
   const [syncMessage, setSyncMessage] = useState('');
@@ -44,13 +60,15 @@ export function PortfolioSyncProvider({ children }) {
   const applyRemoteState = useCallback((data, updatedAt) => {
     suppressDirtyRef.current = true;
     dirtyRef.current = false;
+    invalidateMarketQuotes();
+    refreshMarketDataForPortfolio(data);
     replacePortfolioState(data);
     lastSavedRef.current = fingerprint(data);
     if (updatedAt) {
       cloudUpdatedAtRef.current = updatedAt;
       setCloudUpdatedAt(updatedAt);
     }
-  }, [replacePortfolioState]);
+  }, [invalidateMarketQuotes, replacePortfolioState]);
 
   const pushToCloud = useCallback(async (payload) => {
     const serialized = JSON.stringify(payload);

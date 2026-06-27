@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { marketData } from '../marketData/marketData';
 import { usePortfolioContext } from '../context/PortfolioContext';
 
@@ -14,6 +14,9 @@ export function useQuoteRefresh() {
     snapshotPortfolio,
     totalValue,
   } = usePortfolioContext();
+
+  const totalValueRef = useRef(totalValue);
+  totalValueRef.current = totalValue;
 
   useEffect(() => {
     const symbols = new Set([
@@ -54,7 +57,7 @@ export function useQuoteRefresh() {
 
       if (!cancelled) {
         processPendingOrders(priceMap);
-        snapshotPortfolio(totalValue, priceMap.SPY?.c);
+        snapshotPortfolio(totalValueRef.current, priceMap.SPY?.c);
       }
     }
 
@@ -79,7 +82,6 @@ export function useQuoteRefresh() {
     setQuote,
     setVolatility,
     snapshotPortfolio,
-    totalValue,
     watchlist,
   ]);
 }

@@ -48,6 +48,10 @@ export function PortfolioProvider({ children }) {
     setState(merged);
   }, []);
 
+  const invalidateMarketQuotes = useCallback(() => {
+    setQuotes({});
+  }, []);
+
   const setQuote = useCallback((symbol, quote) => {
     const upper = symbol.toUpperCase();
     setQuotes((prev) => ({ ...prev, [upper]: quote }));
@@ -527,6 +531,7 @@ export function PortfolioProvider({ children }) {
     snapshotPortfolio,
     resetPortfolio,
     replacePortfolioState,
+    invalidateMarketQuotes,
   };
 
   return <PortfolioContext.Provider value={value}>{children}</PortfolioContext.Provider>;

@@ -55,7 +55,7 @@ function snapTradesToChart(trades, chartData) {
     });
 }
 
-export default function StockChart({ symbol }) {
+export default function StockChart({ symbol, livePrice = null }) {
   const { transactions } = usePortfolio();
   const [range, setRange] = useState('D');
   const [candles, setCandles] = useState(null);
@@ -86,12 +86,34 @@ export default function StockChart({ symbol }) {
 
   const data = useMemo(() => {
     if (!candles?.t?.length) return [];
-    return candles.t.map((ts, index) => ({
+    const points = candles.t.map((ts, index) => ({
       ts,
       label: formatChartLabel(ts, range),
       price: candles.c[index],
     }));
-  }, [candles, range]);
+
+    if (livePrice != null && points.length) {
+      const last = points[points.length - 1];
+      const nowSec = Math.floor(Date.now() / 1000);
+      if (nowSec - last.ts < 3600) {
+        points[points.length - 1] = { ...last, price: livePrice };
+      } else {
+        points.push({
+          ts: nowSec,
+          label: formatChartLabel(nowSec, range),
+          price: livePrice,
+        });
+      }
+    }
+
+    return points;
+  }, [candles, range, livePrice]);
+
+  const chartDrift = useMemo(() => {
+    if (livePrice == null || !candles?.c?.length) return 0;
+    const lastClose = candles.c[candles.c.length - 1];
+    return Math.abs(livePrice - lastClose) / livePrice;
+  }, [candles, livePrice]);
 
   const tradeMarkers = useMemo(() => {
     const upper = symbol?.toUpperCase();
@@ -127,9 +149,15 @@ export default function StockChart({ symbol }) {
         </div>
       )}
 
-      {candles?._cached && !isApproximate && (
+      {candles?._cached && !isApproximate && chartDrift <= 0.02 && (
         <div style={{ color: 'var(--text-muted)', fontSize: '0.75rem', marginBottom: 8 }}>
           Cached chart — saves API credits on reload.
+        </div>
+      )}
+
+      {chartDrift > 0.02 && livePrice != null && (
+        <div className="banner banner-warning" style={{ marginBottom: 12 }}>
+          Chart history was stale — last point updated to match live quote ({formatCurrency(livePrice)}).
         </div>
       )}
 

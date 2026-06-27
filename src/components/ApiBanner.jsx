@@ -32,7 +32,11 @@ export default function ApiBanner() {
       }
 
       if (mode === 'simulated') {
-        setMessage('Live quotes unavailable — using simulated prices for now.');
+        if (reason === 'rate_limit') {
+          setMessage('Finnhub rate limit hit — showing simulated prices until live quotes recover.');
+        } else {
+          setMessage('Live quotes unavailable — using simulated prices for now.');
+        }
         return;
       }
 

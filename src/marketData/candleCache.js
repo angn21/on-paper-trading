@@ -70,6 +70,24 @@ export function setCachedCandles(symbol, range, value, session = getLocalMarketS
   saveStore(store);
 }
 
+export function clearCachedCandles(symbol, range = null) {
+  const upper = symbol.toUpperCase();
+  const store = loadStore();
+  let changed = false;
+
+  Object.keys(store).forEach((key) => {
+    const matchesSymbol = key.startsWith(`${upper}:`);
+    const matchesRange = range ? key === cacheKey(upper, range) : true;
+    if (matchesSymbol && matchesRange) {
+      delete store[key];
+      memory.delete(key);
+      changed = true;
+    }
+  });
+
+  if (changed) saveStore(store);
+}
+
 /** Clear expired entries from localStorage (housekeeping). */
 export function pruneCandleCache() {
   const store = loadStore();

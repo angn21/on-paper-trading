@@ -344,7 +344,16 @@ async function twelveDataCandles(symbol, range) {
   const session = getActiveSession();
 
   const cached = getCachedCandles(upper, range, session);
-  if (cached) return cached;
+  if (cached?.c?.length) {
+    try {
+      const quote = await liveQuote(upper);
+      const lastClose = cached.c[cached.c.length - 1];
+      const drift = quote?.c && lastClose ? Math.abs(quote.c - lastClose) / quote.c : 0;
+      if (drift <= 0.02) return cached;
+    } catch {
+      return cached;
+    }
+  }
 
   const data = await twelveDataFetch({
     symbol: upper,
@@ -574,5 +583,11 @@ export const marketData = {
 
   getQuoteRefreshInterval() {
     return getQuoteRefreshInterval(getActiveSession());
+  },
+
+  invalidateQuotes(symbols = []) {
+    symbols.forEach((symbol) => {
+      cache.delete(`quote:${String(symbol).toUpperCase()}`);
+    });
   },
 };

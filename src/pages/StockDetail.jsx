@@ -102,7 +102,7 @@ export default function StockDetail() {
 
       {tab === 'chart' ? (
         <>
-          <StockChart symbol={upper} />
+          <StockChart symbol={upper} livePrice={quote?.c} />
           <StockPositionCard position={position} quote={quote} symbol={upper} />
           <WhatIfCalculator
             symbol={upper}
