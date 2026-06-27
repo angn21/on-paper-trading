@@ -1,8 +1,8 @@
-import { useMemo, useState } from 'react';
-import { DEFAULT_SIGMA, formatVolatilityPercent } from '../lib/volatility';
-import { resolveUnderlyingPrice, resolveVolatility, hasSyncedMarksForSymbol } from '../lib/portfolioStorage';
+import { useEffect, useState } from 'react';
+import { resolveUnderlyingPrice, hasSyncedMarksForSymbol } from '../lib/portfolioStorage';
 import { usePortfolio } from '../hooks/usePortfolio';
 import { useOptionsChain } from '../hooks/useOptionsChain';
+import { getOptionsChainSourceLabel } from '../marketData/massiveOptions';
 import { formatCurrency } from '../lib/formatters';
 import OptionsTradePanel from './OptionsTradePanel';
 
@@ -16,7 +16,7 @@ function seededFallbackPrice(symbol) {
 }
 
 export default function OptionsChain({ symbol }) {
-  const { quotes, volatility, volatilityReliability, portfolioState } = usePortfolio();
+  const { quotes, portfolioState } = usePortfolio();
   const upper = symbol?.toUpperCase();
 
   const underlyingPrice = resolveUnderlyingPrice(
@@ -25,27 +25,33 @@ export default function OptionsChain({ symbol }) {
     portfolioState.marketSnapshot,
     seededFallbackPrice,
   );
-  const sigma = resolveVolatility(
-    upper,
-    volatility,
-    portfolioState.marketSnapshot,
-    volatilityReliability,
-  );
 
-  const { chains, source, message } = useOptionsChain(symbol, underlyingPrice, sigma);
+  const { chains, expiries: chainExpiries, source, message, loadExpiry } = useOptionsChain(
+    symbol,
+    underlyingPrice,
+    0.3,
+  );
 
   const [type, setType] = useState('call');
   const [expiry, setExpiry] = useState('');
   const [selected, setSelected] = useState(null);
 
-  const expiries = useMemo(() => chains.map((item) => item.expiry), [chains]);
+  const expiries = chainExpiries.length
+    ? chainExpiries
+    : chains.map((item) => item.expiry);
   const activeExpiry = expiry || expiries[0] || '';
   const activeChain = chains.find((item) => item.expiry === activeExpiry);
   const rows = activeChain ? activeChain[type === 'call' ? 'calls' : 'puts'] : [];
 
-  const volIsFallback = volatilityReliability[upper] === false && sigma === DEFAULT_SIGMA;
+  useEffect(() => {
+    if (activeExpiry && source === 'eod') {
+      loadExpiry(activeExpiry);
+    }
+  }, [activeExpiry, source, loadExpiry]);
+
   const hasSyncedMarks = hasSyncedMarksForSymbol(upper, portfolioState.marketSnapshot);
   const isLive = source === 'live';
+  const isEod = source === 'eod';
   const isLoading = source === 'loading';
 
   return (
@@ -60,19 +66,16 @@ export default function OptionsChain({ symbol }) {
         <div className="banner banner-info">Loading option chain…</div>
       )}
 
-      {isLive && (
+      {(isLive || isEod) && (
         <div className="banner banner-info">
-          Live option quotes via Massive (near-the-money strikes, next ~12 weeks).
+          {getOptionsChainSourceLabel(source)}
           {message ? ` ${message}` : ''}
         </div>
       )}
 
       {source === 'model' && (
         <div className="banner banner-warning">
-          {message} Using model-derived premiums (Black-Scholes, {formatVolatilityPercent(sigma)} vol).
-          {volIsFallback && (
-            <> Could not load price history — using {formatVolatilityPercent(DEFAULT_SIGMA)} default.</>
-          )}
+          {message} Using model-derived premiums (Black-Scholes).
         </div>
       )}
 
@@ -104,7 +107,7 @@ export default function OptionsChain({ symbol }) {
 
         {!isLoading && !rows.length && (
           <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>
-            No {type}s for this expiry. Try another date or check your Massive plan.
+            No {type}s for this expiry. Try another date or wait if EOD prices are still loading.
           </p>
         )}
 
@@ -123,7 +126,7 @@ export default function OptionsChain({ symbol }) {
               }}
             >
               <span>Strike</span>
-              <span>{isLive ? 'Mid quote' : 'Mid premium'}</span>
+              <span>{isLive || isEod ? 'Mid quote' : 'Mid premium'}</span>
             </div>
 
             {rows.map((row) => (
@@ -151,7 +154,6 @@ export default function OptionsChain({ symbol }) {
       {selected && (
         <OptionsTradePanel
           contract={selected}
-          sigma={sigma}
           underlyingPrice={underlyingPrice}
           liveGreeks={isLive}
         />
