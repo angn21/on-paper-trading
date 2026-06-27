@@ -10,8 +10,17 @@
     "preview": "vite preview",
     "db:health": "node scripts/db-query.mjs health",
     "db:users": "node scripts/db-query.mjs users",
+    "db:recent": "node scripts/db-query.mjs recent",
+    "db:inspect": "node scripts/db-query.mjs inspect",
     "db:portfolio": "node scripts/db-query.mjs portfolio",
-    "db:grant-cash": "node scripts/db-query.mjs grant-cash"
+    "db:grant-cash": "node scripts/db-query.mjs grant-cash",
+    "db:set-cash": "node scripts/db-query.mjs set-cash",
+    "db:grant-shares": "node scripts/db-query.mjs grant-shares",
+    "db:reset-portfolio": "node scripts/db-query.mjs reset-portfolio",
+    "db:delete-user": "node scripts/db-query.mjs delete-user",
+    "db:export": "node scripts/db-query.mjs export",
+    "db:import": "node scripts/db-query.mjs import",
+    "db:create-user": "node scripts/db-query.mjs create-user"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.108.2",

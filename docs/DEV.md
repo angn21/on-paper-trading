@@ -11,18 +11,26 @@ cd on-paper-trading
 
 npm run db:health              # ping Supabase
 npm run db:users               # list accounts
-npm run db:portfolio -- anmol  # dump cloud portfolio JSON + updated_at
+npm run db:recent              # who's active + last save
+npm run db:inspect -- anmol    # summary view
+npm run db:portfolio -- anmol  # full JSON dump
 ```
 
-Grant extra paper money (writes directly to Supabase — local `.env` service role only):
+### Superadmin (local `.env` service role only)
 
 ```powershell
-npm run db:grant-cash -- anmol 50000
+npm run db:create-user -- friend 1234              # default $100k
+npm run db:create-user -- friend 1234 250000        # custom starting cash
+npm run db:grant-cash -- anmol 50000          # add cash
+npm run db:set-cash -- anmol 250000           # set exact cash
+npm run db:grant-shares -- anmol AAPL 10 150  # add shares (no cash deducted)
+npm run db:reset-portfolio -- anmol --yes       # back to $100k empty slate
+npm run db:delete-user -- testuser --yes        # delete account
+npm run db:export -- anmol                      # → backups/anmol-<timestamp>.json
+npm run db:import -- anmol backups/file.json --yes
 ```
 
-The user picks it up on next sync (~15s) or **Account → Sync now**. Only you can run this from your machine.
-
-Useful when checking whether watchlist/trades actually reached the cloud.
+Destructive commands require `--yes`. Users pick up changes on next sync (~15s) or **Account → Sync now**.
 
 ## Vercel CLI
 

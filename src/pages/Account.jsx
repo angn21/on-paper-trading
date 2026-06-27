@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { usePortfolioSync } from '../context/PortfolioSyncContext';
+import PortfolioActions from '../components/PortfolioActions';
 import {
   hasPortfolioActivity,
   loadLocalPortfolio,
@@ -114,6 +115,14 @@ export default function Account() {
             <li>On another device: open Account → <strong>Sync now</strong> to force a pull.</li>
           </ul>
         </section>
+
+        <section className="card account-danger">
+          <h2 className="card-title">Danger zone</h2>
+          <p style={{ color: 'var(--text-muted)', marginTop: 0, fontSize: '0.9rem' }}>
+            Reset clears this device and syncs a fresh $100,000 portfolio to the cloud.
+          </p>
+          <PortfolioActions />
+        </section>
       </div>
     );
   }
@@ -194,6 +203,14 @@ export default function Account() {
             {submitting ? 'Please wait…' : mode === 'login' ? 'Sign in' : 'Create account'}
           </button>
         </form>
+      </section>
+
+      <section className="card account-danger">
+        <h2 className="card-title">Danger zone</h2>
+        <p style={{ color: 'var(--text-muted)', marginTop: 0, fontSize: '0.9rem' }}>
+          Reset this browser&apos;s portfolio to $100,000. Sign in first if you want the reset to sync across devices.
+        </p>
+        <PortfolioActions />
       </section>
 
       <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', textAlign: 'center' }}>

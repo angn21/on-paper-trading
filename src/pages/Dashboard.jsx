@@ -5,7 +5,6 @@ import MarketStatus from '../components/MarketStatus';
 import OfflineBanner from '../components/OfflineBanner';
 import PendingOrders from '../components/PendingOrders';
 import PerformanceStats from '../components/PerformanceStats';
-import PortfolioActions from '../components/PortfolioActions';
 import PortfolioAllocation from '../components/PortfolioAllocation';
 import SectorAllocation from '../components/SectorAllocation';
 import PortfolioChart from '../components/charts/PortfolioChart';
@@ -57,7 +56,6 @@ export default function Dashboard() {
       <SectorAllocation />
       <PerformanceStats performance={performance} />
       <PendingOrders orders={pendingOrders} />
-      <PortfolioActions />
 
       <section className="card">
         <h2 className="card-title">Watchlist</h2>

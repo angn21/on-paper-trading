@@ -12,19 +12,20 @@ export default function PortfolioActions() {
   }
 
   return (
-    <div className="card portfolio-actions">
-      <h2 className="card-title">Portfolio controls</h2>
+    <>
       {!showReset ? (
         <button type="button" className="btn btn-ghost" onClick={() => setShowReset(true)}>
           Reset portfolio…
         </button>
       ) : (
         <div className="reset-confirm">
-          <p>Start fresh with $100,000 paper money?</p>
-          <button type="button" className="btn btn-danger btn-sm" onClick={handleReset}>Yes, reset</button>
-          <button type="button" className="btn btn-ghost btn-sm" onClick={() => setShowReset(false)}>Cancel</button>
+          <p>Start fresh with $100,000 paper money? Positions, watchlist, and trade history will be cleared.</p>
+          <div className="actions-row">
+            <button type="button" className="btn btn-danger btn-sm" onClick={handleReset}>Yes, reset</button>
+            <button type="button" className="btn btn-ghost btn-sm" onClick={() => setShowReset(false)}>Cancel</button>
+          </div>
         </div>
       )}
-    </div>
+    </>
   );
 }

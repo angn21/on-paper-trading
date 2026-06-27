@@ -31,3 +31,6 @@ dist-ssr
 
 # Supabase CLI local state
 supabase/.temp
+
+# Admin export backups (may contain user portfolio data)
+backups/
