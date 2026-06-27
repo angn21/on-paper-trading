@@ -1,6 +1,7 @@
 import { defineConfig, loadEnv } from 'vite';
 import react from '@vitejs/plugin-react';
 import { createFinnhubMiddleware, createHealthMiddleware } from './server/finnhubMiddleware.js';
+import { createMassiveMiddleware } from './server/massiveMiddleware.js';
 import { createTwelveDataMiddleware } from './server/twelveDataMiddleware.js';
 import { createAuthMiddleware } from './server/authMiddleware.js';
 
@@ -12,6 +13,8 @@ export default defineConfig(({ mode }) => {
     env.FINNHUB_API_KEY || env.VITE_FINNHUB_API_KEY || process.env.FINNHUB_API_KEY;
   process.env.TWELVE_DATA_API_KEY =
     env.TWELVE_DATA_API_KEY || process.env.TWELVE_DATA_API_KEY;
+  process.env.MASSIVE_API_KEY =
+    env.MASSIVE_API_KEY || env.POLYGON_API_KEY || process.env.MASSIVE_API_KEY;
   process.env.SUPABASE_URL = env.SUPABASE_URL || process.env.SUPABASE_URL;
   process.env.SUPABASE_SERVICE_ROLE_KEY =
     env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -26,6 +29,7 @@ export default defineConfig(({ mode }) => {
           server.middlewares.use(createHealthMiddleware());
           server.middlewares.use(createAuthMiddleware());
           server.middlewares.use(createFinnhubMiddleware());
+          server.middlewares.use(createMassiveMiddleware());
           server.middlewares.use(createTwelveDataMiddleware());
         },
       },

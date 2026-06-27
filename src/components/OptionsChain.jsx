@@ -1,9 +1,8 @@
 import { useMemo, useState } from 'react';
-import { generateOptionsChain } from '../lib/blackScholes';
 import { DEFAULT_SIGMA, formatVolatilityPercent } from '../lib/volatility';
 import { resolveUnderlyingPrice, resolveVolatility, hasSyncedMarksForSymbol } from '../lib/portfolioStorage';
 import { usePortfolio } from '../hooks/usePortfolio';
-import { useSymbolVolatility } from '../hooks/useSymbolVolatility';
+import { useOptionsChain } from '../hooks/useOptionsChain';
 import { formatCurrency } from '../lib/formatters';
 import OptionsTradePanel from './OptionsTradePanel';
 
@@ -20,8 +19,6 @@ export default function OptionsChain({ symbol }) {
   const { quotes, volatility, volatilityReliability, portfolioState } = usePortfolio();
   const upper = symbol?.toUpperCase();
 
-  useSymbolVolatility(symbol);
-
   const underlyingPrice = resolveUnderlyingPrice(
     upper,
     quotes,
@@ -35,37 +32,49 @@ export default function OptionsChain({ symbol }) {
     volatilityReliability,
   );
 
-  const chain = useMemo(
-    () => generateOptionsChain(symbol, underlyingPrice, sigma),
-    [symbol, underlyingPrice, sigma],
-  );
+  const { chains, source, message } = useOptionsChain(symbol, underlyingPrice, sigma);
 
   const [type, setType] = useState('call');
   const [expiry, setExpiry] = useState('');
   const [selected, setSelected] = useState(null);
 
-  const expiries = chain.map((item) => item.expiry);
+  const expiries = useMemo(() => chains.map((item) => item.expiry), [chains]);
   const activeExpiry = expiry || expiries[0] || '';
-  const activeChain = chain.find((item) => item.expiry === activeExpiry);
+  const activeChain = chains.find((item) => item.expiry === activeExpiry);
   const rows = activeChain ? activeChain[type === 'call' ? 'calls' : 'puts'] : [];
+
   const volIsFallback = volatilityReliability[upper] === false && sigma === DEFAULT_SIGMA;
   const hasSyncedMarks = hasSyncedMarksForSymbol(upper, portfolioState.marketSnapshot);
+  const isLive = source === 'live';
+  const isLoading = source === 'loading';
 
   return (
     <div className="section-gap">
       {hasSyncedMarks && (
         <div className="banner banner-info">
-          Price and option premiums use your synced portfolio marks so they match across devices.
+          Stock prices use your synced portfolio marks so they match across devices.
         </div>
       )}
 
-      <div className="banner banner-warning">
-        Option premiums are model-derived (Black-Scholes) using {formatVolatilityPercent(sigma)}{' '}
-        30-day realized volatility — not live option quotes.
-        {volIsFallback && (
-          <> Could not load price history — using {formatVolatilityPercent(DEFAULT_SIGMA)} default until data is available.</>
-        )}
-      </div>
+      {isLoading && (
+        <div className="banner banner-info">Loading option chain…</div>
+      )}
+
+      {isLive && (
+        <div className="banner banner-info">
+          Live option quotes via Massive (near-the-money strikes, next ~12 weeks).
+          {message ? ` ${message}` : ''}
+        </div>
+      )}
+
+      {source === 'model' && (
+        <div className="banner banner-warning">
+          {message} Using model-derived premiums (Black-Scholes, {formatVolatilityPercent(sigma)} vol).
+          {volIsFallback && (
+            <> Could not load price history — using {formatVolatilityPercent(DEFAULT_SIGMA)} default.</>
+          )}
+        </div>
+      )}
 
       <div className="card">
         <div className="pill-group" style={{ marginBottom: 12 }}>
@@ -93,40 +102,50 @@ export default function OptionsChain({ symbol }) {
           ))}
         </div>
 
-        <div
-          className="options-chain-header"
-          style={{
-            display: 'flex',
-            justifyContent: 'space-between',
-            fontSize: '0.8rem',
-            color: 'var(--text-muted)',
-            marginBottom: 4,
-            paddingBottom: 4,
-            borderBottom: '1px solid var(--border)',
-          }}
-        >
-          <span>Strike</span>
-          <span>Mid premium</span>
-        </div>
+        {!isLoading && !rows.length && (
+          <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>
+            No {type}s for this expiry. Try another date or check your Massive plan.
+          </p>
+        )}
 
-        {rows.map((row) => (
-          <button
-            key={row.id}
-            type="button"
-            className="row-link"
-            style={{
-              width: '100%',
-              background: selected?.id === row.id ? 'var(--accent-dim)' : 'transparent',
-              border: 'none',
-              borderBottom: '1px solid var(--border)',
-              color: 'inherit',
-            }}
-            onClick={() => setSelected(row)}
-          >
-            <span>{formatCurrency(row.strike, 0)}</span>
-            <span className="positive">{formatCurrency(row.mid)}</span>
-          </button>
-        ))}
+        {rows.length > 0 && (
+          <>
+            <div
+              className="options-chain-header"
+              style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                fontSize: '0.8rem',
+                color: 'var(--text-muted)',
+                marginBottom: 4,
+                paddingBottom: 4,
+                borderBottom: '1px solid var(--border)',
+              }}
+            >
+              <span>Strike</span>
+              <span>{isLive ? 'Mid quote' : 'Mid premium'}</span>
+            </div>
+
+            {rows.map((row) => (
+              <button
+                key={row.id}
+                type="button"
+                className="row-link"
+                style={{
+                  width: '100%',
+                  background: selected?.id === row.id ? 'var(--accent-dim)' : 'transparent',
+                  border: 'none',
+                  borderBottom: '1px solid var(--border)',
+                  color: 'inherit',
+                }}
+                onClick={() => setSelected(row)}
+              >
+                <span>{formatCurrency(row.strike, 0)}</span>
+                <span className="positive">{formatCurrency(row.mid)}</span>
+              </button>
+            ))}
+          </>
+        )}
       </div>
 
       {selected && (
@@ -134,6 +153,7 @@ export default function OptionsChain({ symbol }) {
           contract={selected}
           sigma={sigma}
           underlyingPrice={underlyingPrice}
+          liveGreeks={isLive}
         />
       )}
     </div>

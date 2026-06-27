@@ -10,7 +10,7 @@ function daysToExpiry(expiryStr) {
   return Math.max((expiry - Date.now()) / (365.25 * 24 * 3600 * 1000), 1 / 365);
 }
 
-export default function OptionsTradePanel({ contract, sigma = 0.3, underlyingPrice }) {
+export default function OptionsTradePanel({ contract, sigma = 0.3, underlyingPrice, liveGreeks = false }) {
   const { cash, options, buyOption, sellOption } = usePortfolio();
   const onTrade = useTradeFeedback();
   const [side, setSide] = useState('buy');
@@ -31,10 +31,18 @@ export default function OptionsTradePanel({ contract, sigma = 0.3, underlyingPri
   const total = useMemo(() => qty * contract.mid * 100, [contract.mid, qty]);
 
   const greeks = useMemo(() => {
+    if (liveGreeks && contract.greeks) {
+      return {
+        delta: contract.greeks.delta ?? 0,
+        gamma: contract.greeks.gamma ?? 0,
+        theta: contract.greeks.theta ?? 0,
+        vega: contract.greeks.vega ?? 0,
+      };
+    }
     const T = daysToExpiry(contract.expiry);
     const S = underlyingPrice || contract.strike;
     return computeGreeks(S, contract.strike, T, sigma, 0.045, contract.type);
-  }, [contract, sigma, underlyingPrice]);
+  }, [contract, liveGreeks, sigma, underlyingPrice]);
 
   function setMaxSell() {
     if (ownedCount) setContracts(String(ownedCount));
@@ -105,7 +113,7 @@ export default function OptionsTradePanel({ contract, sigma = 0.3, underlyingPri
           <div className="tabular">{ownedCount}</div>
         </div>
         <div>
-          <div className="stat-label"><GlossaryTip term="premium">Model mid</GlossaryTip></div>
+          <div className="stat-label"><GlossaryTip term="premium">{liveGreeks ? 'Quote mid' : 'Model mid'}</GlossaryTip></div>
           <div className="tabular">{formatCurrency(contract.mid)}</div>
         </div>
         <div>

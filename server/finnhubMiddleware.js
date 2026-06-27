@@ -46,6 +46,9 @@ export function createHealthMiddleware() {
       (process.env.FINNHUB_API_KEY || process.env.VITE_FINNHUB_API_KEY || '').trim(),
     );
     const twelvedata = Boolean((process.env.TWELVE_DATA_API_KEY || '').trim());
+    const massive = Boolean(
+      (process.env.MASSIVE_API_KEY || process.env.POLYGON_API_KEY || '').trim(),
+    );
     const supabase = Boolean(
       process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY,
     );
@@ -55,9 +58,10 @@ export function createHealthMiddleware() {
     res.setHeader('Content-Type', 'application/json');
     res.end(
       JSON.stringify({
-        marketData: finnhub || twelvedata ? 'configured' : 'missing',
+        marketData: finnhub || twelvedata || massive ? 'configured' : 'missing',
         finnhub,
         twelvedata,
+        massive,
         supabase,
         accounts: supabase && session ? 'configured' : 'missing',
       }),

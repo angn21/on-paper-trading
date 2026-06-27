@@ -501,9 +501,10 @@ export async function checkMarketDataHealth() {
       status: data.marketData === 'configured' ? 'configured' : 'missing',
       finnhub: Boolean(data.finnhub),
       twelvedata: Boolean(data.twelvedata),
+      massive: Boolean(data.massive),
     };
   } catch {
-    return { status: 'missing', finnhub: false, twelvedata: false };
+    return { status: 'missing', finnhub: false, twelvedata: false, massive: false };
   }
 }
 
