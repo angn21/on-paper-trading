@@ -113,6 +113,22 @@ export function needsSnapshotBackfill(state) {
   });
 }
 
+export function hasSyncedMarksForSymbol(symbol, marketSnapshot) {
+  const upper = symbol.toUpperCase();
+  const quotes = marketSnapshot?.quotes || {};
+  const vol = marketSnapshot?.volatility || {};
+  return Boolean(quotes[upper]?.c && vol[upper]);
+}
+
+export function countSyncedMarks(state) {
+  const snap = state?.marketSnapshot;
+  return symbolsForPortfolio(state).filter((symbol) => hasSyncedMarksForSymbol(symbol, snap)).length;
+}
+
+export function remoteSnapshotIsRicher(localState, remoteState) {
+  return countSyncedMarks(remoteState) > countSyncedMarks(localState);
+}
+
 export function sanitizePortfolioState(raw) {
   if (!raw || typeof raw !== 'object') return { ...defaultPortfolioState };
 

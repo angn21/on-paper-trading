@@ -11,7 +11,7 @@ import TradePanel from '../components/TradePanel';
 import WhatIfCalculator from '../components/WhatIfCalculator';
 import { marketData } from '../marketData/marketData';
 import { usePortfolio } from '../hooks/usePortfolio';
-import { resolveUnderlyingPrice } from '../lib/portfolioStorage';
+import { hasSyncedMarksForSymbol, resolveUnderlyingPrice } from '../lib/portfolioStorage';
 import { getSector } from '../lib/sectors';
 import { formatCurrency, formatPercent, plClass } from '../lib/formatters';
 
@@ -61,7 +61,7 @@ export default function StockDetail() {
   const [liveQuote, setLiveQuote] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  const inPortfolioSnapshot = Boolean(portfolioState.marketSnapshot?.quotes?.[upper]?.c);
+  const hasSyncedMarks = hasSyncedMarksForSymbol(upper, portfolioState.marketSnapshot);
 
   const displayQuote = useMemo(
     () => buildDisplayQuote(upper, quotes, portfolioState.marketSnapshot),
@@ -74,7 +74,7 @@ export default function StockDetail() {
   const sector = getSector(upper);
 
   useEffect(() => {
-    if (inPortfolioSnapshot) {
+    if (hasSyncedMarks) {
       setLoading(false);
       return undefined;
     }
@@ -102,9 +102,9 @@ export default function StockDetail() {
     return () => {
       cancelled = true;
     };
-  }, [inPortfolioSnapshot, isQuoteRefreshPaused, setQuote, upper]);
+  }, [hasSyncedMarks, isQuoteRefreshPaused, setQuote, upper]);
 
-  const headerQuote = inPortfolioSnapshot ? displayQuote : (liveQuote || displayQuote);
+  const headerQuote = hasSyncedMarks ? displayQuote : (liveQuote || displayQuote);
 
   return (
     <div className="section-gap" style={{ paddingTop: 16 }}>
@@ -113,7 +113,7 @@ export default function StockDetail() {
       <ApiBanner />
       <OfflineBanner />
 
-      {inPortfolioSnapshot && (
+      {hasSyncedMarks && (
         <div className="banner banner-info" style={{ marginBottom: 0 }}>
           Price and option premiums use your synced portfolio marks so they match across devices.
         </div>

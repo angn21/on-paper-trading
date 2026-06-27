@@ -40,26 +40,21 @@ export function PortfolioProvider({ children }) {
 
   useEffect(() => {
     const snapshot = state.marketSnapshot;
-    if (!snapshot?.quotes) return;
+    if (!snapshot?.quotes && !snapshot?.volatility) return;
 
-    Object.entries(snapshot.quotes).forEach(([symbol, quote]) => {
+    Object.entries(snapshot.quotes || {}).forEach(([symbol, quote]) => {
       const upper = symbol.toUpperCase();
-      setQuotes((prev) => {
-        if (prev[upper]?.c) return prev;
-        return {
-          ...prev,
-          [upper]: { c: quote.c, d: 0, dp: quote.dp ?? 0, pc: quote.c },
-        };
-      });
+      setQuotes((prev) => ({
+        ...prev,
+        [upper]: { c: quote.c, d: 0, dp: quote.dp ?? 0, pc: quote.c },
+      }));
     });
 
     Object.entries(snapshot.volatility || {}).forEach(([symbol, sigma]) => {
       const upper = symbol.toUpperCase();
-      setVolatilityState((prev) => (prev[upper] ? prev : { ...prev, [upper]: sigma }));
+      setVolatilityState((prev) => ({ ...prev, [upper]: sigma }));
     });
-  // Seed once from persisted snapshot; live quotes take over after refresh.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [state.marketSnapshot]);
 
   const pauseQuoteRefresh = useCallback((durationMs = 180_000) => {
     quoteRefreshPausedUntilRef.current = Date.now() + durationMs;

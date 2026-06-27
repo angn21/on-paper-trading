@@ -5,6 +5,7 @@ import {
   defaultPortfolioState,
   needsSnapshotBackfill,
   pickSyncPayload,
+  remoteSnapshotIsRicher,
   symbolsForPortfolio,
 } from '../lib/portfolioStorage';
 import { marketData } from '../marketData/marketData';
@@ -14,7 +15,7 @@ import { usePortfolioContext } from './PortfolioContext';
 const PortfolioSyncContext = createContext(null);
 const PULL_INTERVAL_MS = 15_000;
 
-function seedQuotesFromSnapshot(data, setQuote, setVolatility) {
+function seedMarketSnapshot(data, setQuote, setVolatility) {
   const snapshot = data?.marketSnapshot;
   if (!snapshot) return;
 
@@ -40,24 +41,20 @@ async function prepareSyncPayload(state, quotes, volatility, setQuote, setVolati
   for (const symbol of symbols) {
     const upper = symbol.toUpperCase();
 
-    if (!mergedQuotes[upper]?.c) {
-      try {
-        const quote = await marketData.getQuote(upper);
-        mergedQuotes[upper] = quote;
-        setQuote(upper, quote);
-      } catch {
-        // Try next symbol.
-      }
+    try {
+      const quote = await marketData.getQuote(upper);
+      mergedQuotes[upper] = quote;
+      setQuote(upper, quote);
+    } catch {
+      // Keep any existing quote for this symbol.
     }
 
-    if (!mergedVol[upper]) {
-      try {
-        const sigma = await marketData.getVolatility(upper);
-        mergedVol[upper] = sigma;
-        setVolatility(upper, sigma);
-      } catch {
-        // Try next symbol.
-      }
+    try {
+      const sigma = await marketData.getVolatility(upper);
+      mergedVol[upper] = sigma;
+      setVolatility(upper, sigma);
+    } catch {
+      // Keep any existing volatility for this symbol.
     }
   }
 
@@ -112,7 +109,7 @@ export function PortfolioSyncProvider({ children }) {
     suppressDirtyRef.current = true;
     dirtyRef.current = false;
     replacePortfolioState(data);
-    seedQuotesFromSnapshot(data, setQuote, setVolatility);
+    seedMarketSnapshot(data, setQuote, setVolatility);
     pauseQuoteRefresh(180_000);
     lastSavedRef.current = fingerprint(data);
     if (updatedAt) {
@@ -144,6 +141,7 @@ export function PortfolioSyncProvider({ children }) {
     dirtyRef.current = false;
     if (payload.marketSnapshot) {
       mergeMarketSnapshot(payload.marketSnapshot);
+      seedMarketSnapshot({ marketSnapshot: payload.marketSnapshot }, setQuote, setVolatility);
     }
     if (result?.updatedAt) {
       cloudUpdatedAtRef.current = result.updatedAt;
@@ -156,7 +154,12 @@ export function PortfolioSyncProvider({ children }) {
     const remote = await fetchRemotePortfolio();
     if (!remote?.updatedAt || isDefaultPortfolio(remote.data)) return remote;
 
-    if (isRemoteNewer(remote.updatedAt, cloudUpdatedAtRef.current)) {
+    const shouldPull = !dirtyRef.current && (
+      isRemoteNewer(remote.updatedAt, cloudUpdatedAtRef.current)
+      || remoteSnapshotIsRicher(portfolioRef.current, remote.data)
+    );
+
+    if (shouldPull) {
       applyRemoteState(remote.data, remote.updatedAt);
     }
     return remote;
@@ -224,7 +227,13 @@ export function PortfolioSyncProvider({ children }) {
       if (!remote) throw new Error('Could not reach cloud portfolio.');
 
       if (!isDefaultPortfolio(remote.data)) {
-        applyRemoteState(remote.data, remote.updatedAt);
+        const shouldApply = isRemoteNewer(remote.updatedAt, cloudUpdatedAtRef.current)
+          || remoteSnapshotIsRicher(portfolioRef.current, remote.data);
+
+        if (shouldApply) {
+          applyRemoteState(remote.data, remote.updatedAt);
+        }
+
         if (needsSnapshotBackfill(remote.data)) {
           await pushToCloud(remote.data);
           setSyncMessage('Synced prices to cloud.');
