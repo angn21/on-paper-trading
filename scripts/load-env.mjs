@@ -5,7 +5,7 @@ import { fileURLToPath } from 'url';
 const ROOT = resolve(fileURLToPath(new URL('.', import.meta.url)), '..');
 
 export function loadEnv() {
-  for (const name of ['.env.local', '.env']) {
+  for (const name of ['.env', '.env.local']) {
     const path = resolve(ROOT, name);
     if (!existsSync(path)) continue;
 
@@ -22,8 +22,7 @@ export function loadEnv() {
       ) {
         value = value.slice(1, -1);
       }
-      if (!process.env[key]) process.env[key] = value;
+      process.env[key] = value;
     }
-    break;
   }
 }

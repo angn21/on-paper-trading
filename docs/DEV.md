@@ -4,7 +4,7 @@ Quick reference for debugging **On Paper** locally and in production.
 
 ## Database scripts (Supabase)
 
-Reads `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` from `.env` or `.env.local`.
+Reads `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` from `.env`, with `.env.local` overrides (e.g. from `vercel env pull`).
 
 ```powershell
 cd on-paper-trading
