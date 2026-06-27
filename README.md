@@ -12,7 +12,19 @@ Each visitor's portfolio is saved in their **browser only** (localStorage) — n
 - Interactive price charts (D / W / M / Y) and portfolio value chart
 - Watchlist with starred tickers
 - Simulated options trading (Black-Scholes model — not live option quotes)
-- Finnhub live US stock data via a **server-side proxy** (API key never exposed to browsers)
+- Finnhub live US stock **quotes** via server-side proxy
+- Twelve Data **historical charts** with smart localStorage caching (saves API credits)
+
+## API keys
+
+You need two free keys:
+
+| Provider | Used for | Free tier | Sign up |
+|----------|----------|-----------|---------|
+| **Finnhub** | Live quotes, search, market status | 60 calls/min | [finnhub.io/register](https://finnhub.io/register) |
+| **Twelve Data** | Price charts (D/W/M/Y) | 800 credits/day | [twelvedata.com/register](https://twelvedata.com/register) |
+
+Each chart fetch costs **1 Twelve Data credit** per symbol. Charts are cached in your browser so you don't re-fetch the same history on every visit (5-year data is cached for 30 days).
 
 ## Local development
 
@@ -28,13 +40,12 @@ npm install
 copy .env.example .env
 ```
 
-Edit `.env` and add your Finnhub key:
+Edit `.env` and add both keys:
 
 ```
-FINNHUB_API_KEY=your_actual_key_here
+FINNHUB_API_KEY=your_finnhub_key_here
+TWELVE_DATA_API_KEY=your_twelve_data_key_here
 ```
-
-Get a free key at [https://finnhub.io/register](https://finnhub.io/register)
 
 ### Run locally
 
@@ -44,7 +55,7 @@ npm run dev
 
 Open [http://localhost:5173](http://localhost:5173)
 
-The dev server proxies market data through `/api/finnhub` so your key stays on the server side even locally.
+The dev server proxies market data through `/api/finnhub` and `/api/twelvedata` so keys stay server-side.
 
 ### Build
 
@@ -87,6 +98,7 @@ git push -u origin main
    | Name | Value |
    |------|-------|
    | `FINNHUB_API_KEY` | your Finnhub API key |
+   | `TWELVE_DATA_API_KEY` | your Twelve Data API key |
 
 6. Click **Deploy**
 
@@ -94,7 +106,7 @@ After ~1 minute you'll get a live URL. Share that link with friends.
 
 ### Step 3 — Verify production
 
-Visit your URL — the simulated-price banner should **not** appear. Search for `AAPL` and confirm a real price loads.
+Visit your URL — search for `AAPL`, confirm a real price loads, and check the chart shows real history (not a sine wave).
 
 ### Updating the live site
 
@@ -113,14 +125,12 @@ Vercel redeploys automatically on every push to `main`.
 ## How the architecture works
 
 ```text
-Friend's browser                    Your Vercel site
-     │                                    │
-     │  GET /api/finnhub/quote?symbol=AAPL│
-     │ ─────────────────────────────────► │
-     │                                    │  adds FINNHUB_API_KEY (secret)
-     │                                    │ ──────────────────────► Finnhub
-     │  ◄─────────────────────────────────│
-     │         JSON price data            │
+Browser                         Vercel proxy
+  │  /api/finnhub?path=quote      → Finnhub (quotes)
+  │  /api/twelvedata?symbol=...   → Twelve Data (charts, 1 credit/call)
+
+Charts cached in browser localStorage (per range):
+  Y = 30 days · M = 1 day · W = 4 hours · D = 5 minutes
 
 Portfolio data never leaves the browser (localStorage).
 ```
@@ -130,7 +140,7 @@ Portfolio data never leaves the browser (localStorage).
 ```
 api/                    # Vercel serverless functions (production proxy)
 server/                 # Shared proxy logic + Vite dev middleware
-src/marketData/         # Provider-agnostic data layer (calls /api/finnhub)
+src/marketData/         # Data layer + candleCache.js (localStorage chart cache)
 src/context/            # Portfolio state + localStorage
 ```
 
@@ -138,11 +148,12 @@ src/context/            # Portfolio state + localStorage
 
 | Issue | Fix |
 |-------|-----|
-| Simulated-price banner on live site | Add `FINNHUB_API_KEY` in Vercel → Project → Settings → Environment Variables, then redeploy |
-| Simulated-price banner locally | Ensure `.env` has `FINNHUB_API_KEY=...` and restart `npm run dev` |
+| Simulated-price banner | Add `FINNHUB_API_KEY` in Vercel env vars, redeploy |
+| Approximate/sine-wave charts | Add `TWELVE_DATA_API_KEY` in Vercel env vars, redeploy |
+| Chart says "Cached chart" | Normal — data loaded from browser cache to save credits |
 | Symbol not found | Free Finnhub tier is US stocks only |
-| Friend lost their portfolio | Browser data was cleared — expected with no accounts |
-| Rate limits | Free tier is ~60 calls/min shared across all visitors |
+| Friend lost their portfolio | Browser data cleared — expected with no accounts |
+| Twelve Data rate limits | 800 credits/day on free tier; caching reduces usage heavily |
 
 ## Tech stack
 

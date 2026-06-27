@@ -14,25 +14,25 @@ export default function ApiBanner() {
       const mode = marketData.getMode();
       const reason = marketData.getFailureReason();
 
-      // If live quotes work, don't show the config banner even if /api/health glitches.
-      if (health === 'configured' || mode === 'live') {
-        if (mode === 'simulated') {
-          setMessage('Live market data unavailable — using simulated prices for now.');
-        } else {
-          setMessage('');
-        }
-        return;
-      }
-
-      if (health === 'missing' || reason === 'no_api_key') {
+      if (health.status === 'missing') {
         setMessage(
-          'Market data server not configured — using simulated prices. In Vercel, set FINNHUB_API_KEY for Production and redeploy.',
+          'Market data server not configured. Set FINNHUB_API_KEY and TWELVE_DATA_API_KEY on the server (see README).',
         );
         return;
       }
 
+      if (!health.finnhub && mode === 'simulated') {
+        setMessage('Finnhub not configured — quotes may use simulated prices.');
+        return;
+      }
+
+      if (!health.twelvedata) {
+        setMessage('Twelve Data not configured — charts may be approximate. Add TWELVE_DATA_API_KEY to enable live charts.');
+        return;
+      }
+
       if (mode === 'simulated') {
-        setMessage('Live market data unavailable — using simulated prices for now.');
+        setMessage('Live quotes unavailable — using simulated prices for now.');
         return;
       }
 

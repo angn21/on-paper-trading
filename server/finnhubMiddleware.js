@@ -42,12 +42,19 @@ export function createHealthMiddleware() {
       return;
     }
 
-    const configured = Boolean(
+    const finnhub = Boolean(
       (process.env.FINNHUB_API_KEY || process.env.VITE_FINNHUB_API_KEY || '').trim(),
     );
+    const twelvedata = Boolean((process.env.TWELVE_DATA_API_KEY || '').trim());
 
     res.statusCode = 200;
     res.setHeader('Content-Type', 'application/json');
-    res.end(JSON.stringify({ marketData: configured ? 'configured' : 'missing' }));
+    res.end(
+      JSON.stringify({
+        marketData: finnhub || twelvedata ? 'configured' : 'missing',
+        finnhub,
+        twelvedata,
+      }),
+    );
   };
 }

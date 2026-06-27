@@ -1,14 +1,17 @@
 /**
  * Provider-agnostic market data layer.
- * Live data goes through /api/finnhub (server-side proxy) so the Finnhub key
- * never ships to the browser. Swap providers by editing the live adapter below.
+ * - Quotes/search/status: Finnhub via /api/finnhub
+ * - Charts (candles): Twelve Data via /api/twelvedata (1 credit per symbol per fetch)
+ * Keys stay server-side. Candles are cached in localStorage to save API credits.
  */
 
-const API_BASE = '/api/finnhub';
+import { getCachedCandles, pruneCandleCache, setCachedCandles } from './candleCache.js';
+
+const FINNHUB_API = '/api/finnhub';
+const TWELVE_DATA_API = '/api/twelvedata';
 
 const CACHE_TTL = {
   quote: 30_000,
-  candles: 300_000,
   search: 120_000,
   marketStatus: 300_000,
 };
@@ -27,6 +30,14 @@ const SIMULATED_SYMBOLS = [
   { symbol: 'META', description: 'Meta Platforms Inc' },
   { symbol: 'SPY', description: 'SPDR S&P 500 ETF' },
 ];
+
+/** Twelve Data time_series config per chart range (1 credit each). */
+const TWELVE_DATA_RANGE = {
+  D: { interval: '5min', outputsize: 100 },
+  W: { interval: '1day', outputsize: 90 },
+  M: { interval: '1day', outputsize: 365 },
+  Y: { interval: '1week', outputsize: 260 },
+};
 
 function hashString(str) {
   let hash = 0;
@@ -97,53 +108,34 @@ function simulatedSearch(query) {
   );
 }
 
-function rangeAttempts(range) {
-  const now = Math.floor(Date.now() / 1000);
-  const day = 24 * 3600;
-
-  switch (range) {
-    case 'D':
-      return [
-        { resolution: '5', from: now - 2 * day, to: now },
-        { resolution: '15', from: now - 5 * day, to: now },
-        { resolution: '60', from: now - 10 * day, to: now },
-        { resolution: 'D', from: now - 30 * day, to: now },
-      ];
-    case 'W':
-      return [{ resolution: 'D', from: now - 90 * day, to: now }];
-    case 'M':
-      return [{ resolution: 'D', from: now - 365 * day, to: now }];
-    case 'Y':
-    default:
-      return [
-        { resolution: 'W', from: now - 5 * 365 * day, to: now },
-        { resolution: 'D', from: now - 365 * day, to: now },
-      ];
-  }
+function parseTwelveDataDatetime(datetime) {
+  const normalized = datetime.includes(' ')
+    ? datetime.replace(' ', 'T')
+    : `${datetime}T00:00:00`;
+  return Math.floor(new Date(`${normalized}-05:00`).getTime() / 1000);
 }
 
-function sliceCandlesForRange(candles, range) {
-  if (!candles?.t?.length) return candles;
+function parseTwelveDataCandles(data) {
+  if (data.status !== 'ok' || !data.values?.length) {
+    throw new Error('no_candles');
+  }
 
-  const now = Date.now() / 1000;
-  const windows = {
-    D: 5 * 24 * 3600,
-    W: 90 * 24 * 3600,
-    M: 365 * 24 * 3600,
-    Y: 5 * 365 * 24 * 3600,
-  };
-  const cutoff = now - (windows[range] || windows.W);
-  const startIndex = candles.t.findIndex((ts) => ts >= cutoff);
-  const from = startIndex === -1 ? 0 : startIndex;
+  const values = [...data.values].reverse();
+  const t = [];
+  const o = [];
+  const h = [];
+  const l = [];
+  const c = [];
 
-  return {
-    s: 'ok',
-    t: candles.t.slice(from),
-    o: candles.o.slice(from),
-    h: candles.h.slice(from),
-    l: candles.l.slice(from),
-    c: candles.c.slice(from),
-  };
+  values.forEach((bar) => {
+    t.push(parseTwelveDataDatetime(bar.datetime));
+    o.push(Number(bar.open));
+    h.push(Number(bar.high));
+    l.push(Number(bar.low));
+    c.push(Number(bar.close));
+  });
+
+  return { s: 'ok', t, o, h, l, c, _source: 'live' };
 }
 
 function downsampleCandles(candles, maxPoints = 120) {
@@ -173,10 +165,10 @@ function downsampleCandles(candles, maxPoints = 120) {
     c.push(candles.c[last]);
   }
 
-  return { s: 'ok', t, o, h, l, c };
+  return { ...candles, t, o, h, l, c };
 }
 
-/** Approximate chart from live quote when Finnhub candles are unavailable. */
+/** Fallback chart anchored to live quote when Twelve Data is unavailable. */
 async function approximateCandles(symbol, range) {
   let quote;
   try {
@@ -185,10 +177,11 @@ async function approximateCandles(symbol, range) {
     quote = simulatedQuote(symbol);
   }
 
-  const attempts = rangeAttempts(range);
-  const { from, to } = attempts[0];
-  const pointCount = range === 'D' ? 48 : range === 'W' ? 60 : range === 'M' ? 90 : 100;
-  const step = (to - from) / Math.max(pointCount - 1, 1);
+  const pointCount = { D: 48, W: 60, M: 90, Y: 100 }[range] || 60;
+  const now = Math.floor(Date.now() / 1000);
+  const windows = { D: 2 * 24 * 3600, W: 90 * 24 * 3600, M: 365 * 24 * 3600, Y: 5 * 365 * 24 * 3600 };
+  const from = now - (windows[range] || windows.W);
+  const step = (now - from) / Math.max(pointCount - 1, 1);
   const seed = hashString(symbol);
   const start = quote.pc || quote.c;
   const end = quote.c || quote.pc;
@@ -215,19 +208,11 @@ async function approximateCandles(symbol, range) {
     c.push(Number(close.toFixed(2)));
   }
 
-  return {
-    s: 'ok',
-    t,
-    o,
-    h,
-    l,
-    c,
-    _source: 'approximate',
-  };
+  return { s: 'ok', t, o, h, l, c, _source: 'approximate' };
 }
 
 async function finnhubFetch(path, params = {}) {
-  const url = new URL(API_BASE, window.location.origin);
+  const url = new URL(FINNHUB_API, window.location.origin);
   url.searchParams.set('path', path.replace(/^\//, ''));
   Object.entries(params).forEach(([key, value]) => {
     if (value != null) url.searchParams.set(key, String(value));
@@ -248,6 +233,32 @@ async function finnhubFetch(path, params = {}) {
   const data = await response.json();
   if (data?.error) {
     throw new Error(data.error);
+  }
+
+  return data;
+}
+
+async function twelveDataFetch(params = {}) {
+  const url = new URL(TWELVE_DATA_API, window.location.origin);
+  Object.entries(params).forEach(([key, value]) => {
+    if (value != null) url.searchParams.set(key, String(value));
+  });
+
+  const response = await fetch(url.toString());
+
+  if (response.status === 503) {
+    throw new Error('no_twelve_data_key');
+  }
+  if (response.status === 429) {
+    throw new Error('rate_limit');
+  }
+  if (!response.ok) {
+    throw new Error(`http_${response.status}`);
+  }
+
+  const data = await response.json();
+  if (data?.status === 'error' || data?.code) {
+    throw new Error(data.message || 'twelve_data_error');
   }
 
   return data;
@@ -290,40 +301,23 @@ async function liveQuote(symbol) {
   return data;
 }
 
-async function liveCandles(symbol, range) {
+async function twelveDataCandles(symbol, range) {
   const upper = symbol.toUpperCase();
-  const cacheKey = `candles:${upper}:${range}`;
-  const cached = getCached(cacheKey);
+  const config = TWELVE_DATA_RANGE[range] || TWELVE_DATA_RANGE.W;
+
+  const cached = getCachedCandles(upper, range);
   if (cached) return cached;
 
-  const attempts = rangeAttempts(range);
+  const data = await twelveDataFetch({
+    symbol: upper,
+    interval: config.interval,
+    outputsize: config.outputsize,
+    order: 'ASC',
+  });
 
-  for (const attempt of attempts) {
-    try {
-      const data = await finnhubFetch('/stock/candle', {
-        symbol: upper,
-        resolution: attempt.resolution,
-        from: attempt.from,
-        to: attempt.to,
-      });
-
-      if (data.s === 'ok' && data.t?.length) {
-        const sliced = sliceCandlesForRange(data, range);
-        const result = {
-          ...downsampleCandles(sliced),
-          _source: 'live',
-        };
-        setCache(cacheKey, result, CACHE_TTL.candles);
-        return result;
-      }
-    } catch {
-      // Try next resolution/window.
-    }
-  }
-
-  const approximate = await approximateCandles(upper, range);
-  setCache(cacheKey, approximate, CACHE_TTL.candles);
-  return approximate;
+  const parsed = downsampleCandles(parseTwelveDataCandles(data));
+  setCachedCandles(upper, range, parsed);
+  return parsed;
 }
 
 async function liveMarketStatus() {
@@ -379,20 +373,26 @@ async function withFallback(liveFn, simFn, cacheKey) {
   }
 }
 
-/** Check whether the server proxy has a Finnhub key configured. */
+/** Check whether the server proxy has API keys configured. */
 export async function checkMarketDataHealth() {
   try {
     const response = await fetch('/api/health');
     const contentType = response.headers.get('content-type') || '';
     if (!response.ok || !contentType.includes('application/json')) {
-      return 'missing';
+      return { status: 'missing' };
     }
     const data = await response.json();
-    return data.marketData === 'configured' ? 'configured' : 'missing';
+    return {
+      status: data.marketData === 'configured' ? 'configured' : 'missing',
+      finnhub: Boolean(data.finnhub),
+      twelvedata: Boolean(data.twelvedata),
+    };
   } catch {
-    return 'missing';
+    return { status: 'missing', finnhub: false, twelvedata: false };
   }
 }
+
+pruneCandleCache();
 
 export const marketData = {
   getMode() {
@@ -427,12 +427,11 @@ export const marketData = {
 
   async getCandles(symbol, range = 'D') {
     const upper = symbol.toUpperCase();
-    const cacheKey = `candles:${upper}:${range}`;
 
     try {
-      return await liveCandles(upper, range);
+      return await twelveDataCandles(upper, range);
     } catch {
-      const stale = getStale(cacheKey);
+      const stale = getCachedCandles(upper, range);
       if (stale) return stale;
       return approximateCandles(upper, range);
     }

@@ -71,7 +71,13 @@ export default function StockChart({ symbol }) {
 
       {isApproximate && (
         <div className="banner banner-warning" style={{ marginBottom: 12 }}>
-          Historical candles unavailable on this data plan — showing an approximate chart from the live quote.
+          Chart data approximate — add TWELVE_DATA_API_KEY for live historical prices.
+        </div>
+      )}
+
+      {candles?._cached && !isApproximate && (
+        <div style={{ color: 'var(--text-muted)', fontSize: '0.75rem', marginBottom: 8 }}>
+          Cached chart — saves API credits on reload.
         </div>
       )}
 
