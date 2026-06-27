@@ -80,7 +80,7 @@ export async function saveRemotePortfolio(data) {
   }
   const result = await parseJson(response);
   if (!response.ok) {
-    throw new Error(result.error || 'Could not save cloud portfolio.');
+    throw new Error(result.detail || result.error || 'Could not save cloud portfolio.');
   }
   return result;
 }

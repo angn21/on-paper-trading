@@ -82,10 +82,14 @@ export async function handleRegister(request) {
     ? sanitizePortfolioState(body.portfolio)
     : { ...defaultPortfolioState };
 
-  await supabase.from('portfolios').insert({
+  const { error: portfolioError } = await supabase.from('portfolios').insert({
     user_id: profile.id,
     data: portfolioData,
   });
+
+  if (portfolioError) {
+    console.error('portfolio insert on register failed:', portfolioError);
+  }
 
   const token = await createSessionToken(profile.id, profile.username);
 
@@ -196,7 +200,8 @@ export async function handlePortfolio(request) {
       .single();
 
     if (error) {
-      return json({ error: 'Could not save portfolio.' }, 500);
+      console.error('portfolio save failed:', error);
+      return json({ error: 'Could not save portfolio.', detail: error.message }, 500);
     }
 
     return json({ ok: true, updatedAt: data.updated_at });
