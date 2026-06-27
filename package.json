@@ -7,7 +7,10 @@
     "dev": "vite",
     "build": "vite build",
     "lint": "oxlint",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "db:health": "node scripts/db-query.mjs health",
+    "db:users": "node scripts/db-query.mjs users",
+    "db:portfolio": "node scripts/db-query.mjs portfolio"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.108.2",

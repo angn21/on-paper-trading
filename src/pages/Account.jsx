@@ -109,9 +109,9 @@ export default function Account() {
         <section className="card">
           <h2 className="card-title">How sync works</h2>
           <ul className="account-notes">
-            <li>Trades and watchlist sync to the cloud automatically.</li>
-            <li>On another device, sign in then tap <strong>Sync now</strong> if needed.</li>
-            <li>Switch away from the tab after trading to force a save.</li>
+            <li>Changes auto-save ~1s after you trade or star a ticker.</li>
+            <li>Other devices pull updates every ~15s, or when you refocus the tab.</li>
+            <li>On another device: open Account → <strong>Sync now</strong> to force a pull.</li>
           </ul>
         </section>
       </div>

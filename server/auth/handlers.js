@@ -1,4 +1,5 @@
 import { hashPin, verifyPin } from './pin.js';
+import { createLogger, logRequest } from '../log.js';
 import { getSupabase, isSupabaseConfigured } from './supabase.js';
 import {
   buildSessionCookie,
@@ -13,6 +14,8 @@ import {
   validatePin,
   validateUsername,
 } from './portfolioState.js';
+
+const log = createLogger('auth');
 
 function json(data, status = 200, extraHeaders = {}) {
   return Response.json(data, { status, headers: extraHeaders });
@@ -88,8 +91,10 @@ export async function handleRegister(request) {
   });
 
   if (portfolioError) {
-    console.error('portfolio insert on register failed:', portfolioError);
+    log.error('portfolio insert on register failed', { code: portfolioError.code, message: portfolioError.message });
   }
+
+  log.info('register ok', { username: profile.username, userId: profile.id, importLocal });
 
   const token = await createSessionToken(profile.id, profile.username);
 
@@ -129,6 +134,7 @@ export async function handleLogin(request) {
   }
 
   const token = await createSessionToken(profile.id, profile.username);
+  log.info('login ok', { username: profile.username, userId: profile.id });
 
   return json(
     { ok: true, user: { id: profile.id, username: profile.username } },
@@ -158,6 +164,7 @@ export async function handleMe(request) {
 }
 
 export async function handlePortfolio(request) {
+  logRequest('portfolio', request);
   if (!isSupabaseConfigured()) return notConfigured();
 
   const session = await getUserFromRequest(request);
@@ -173,11 +180,20 @@ export async function handlePortfolio(request) {
       .maybeSingle();
 
     if (error) {
+      log.error('portfolio load failed', { userId: session.userId, message: error.message });
       return json({ error: 'Could not load portfolio.' }, 500);
     }
 
+    const portfolio = sanitizePortfolioState(data?.data || defaultPortfolioState);
+    log.debug('portfolio loaded', {
+      userId: session.userId,
+      updatedAt: data?.updated_at,
+      watchlist: portfolio.watchlist?.length ?? 0,
+      positions: Object.keys(portfolio.positions || {}).length,
+    });
+
     return json({
-      data: sanitizePortfolioState(data?.data || defaultPortfolioState),
+      data: portfolio,
       updatedAt: data?.updated_at || null,
     });
   }
@@ -200,9 +216,21 @@ export async function handlePortfolio(request) {
       .single();
 
     if (error) {
-      console.error('portfolio save failed:', error);
+      log.error('portfolio save failed', {
+        userId: session.userId,
+        code: error.code,
+        message: error.message,
+      });
       return json({ error: 'Could not save portfolio.', detail: error.message }, 500);
     }
+
+    log.info('portfolio saved', {
+      userId: session.userId,
+      updatedAt: data.updated_at,
+      watchlist: portfolio.watchlist?.length ?? 0,
+      positions: Object.keys(portfolio.positions || {}).length,
+      transactions: portfolio.transactions?.length ?? 0,
+    });
 
     return json({ ok: true, updatedAt: data.updated_at });
   }

@@ -2,13 +2,13 @@ import { createContext, useCallback, useContext, useEffect, useRef, useState } f
 import { fetchRemotePortfolio, saveRemotePortfolio } from '../lib/authApi';
 import {
   defaultPortfolioState,
-  getLocalPortfolioUpdatedAt,
   pickSyncPayload,
 } from '../lib/portfolioStorage';
 import { useAuth } from './AuthContext';
 import { usePortfolioContext } from './PortfolioContext';
 
 const PortfolioSyncContext = createContext(null);
+const PULL_INTERVAL_MS = 15_000;
 
 function fingerprint(state) {
   return JSON.stringify(pickSyncPayload(state));
@@ -16,6 +16,12 @@ function fingerprint(state) {
 
 function isDefaultPortfolio(state) {
   return fingerprint(state) === fingerprint(defaultPortfolioState);
+}
+
+function isRemoteNewer(remoteUpdatedAt, knownUpdatedAt) {
+  if (!remoteUpdatedAt) return false;
+  if (!knownUpdatedAt) return true;
+  return new Date(remoteUpdatedAt).getTime() > new Date(knownUpdatedAt).getTime();
 }
 
 export function PortfolioSyncProvider({ children }) {
@@ -28,32 +34,53 @@ export function PortfolioSyncProvider({ children }) {
   const saveTimerRef = useRef(null);
   const lastSavedRef = useRef('');
   const portfolioRef = useRef(portfolioState);
+  const cloudUpdatedAtRef = useRef(null);
+  const dirtyRef = useRef(false);
+  const suppressDirtyRef = useRef(false);
+  const hydratedRef = useRef(false);
 
   portfolioRef.current = portfolioState;
 
+  const applyRemoteState = useCallback((data, updatedAt) => {
+    suppressDirtyRef.current = true;
+    dirtyRef.current = false;
+    replacePortfolioState(data);
+    lastSavedRef.current = fingerprint(data);
+    if (updatedAt) {
+      cloudUpdatedAtRef.current = updatedAt;
+      setCloudUpdatedAt(updatedAt);
+    }
+  }, [replacePortfolioState]);
+
   const pushToCloud = useCallback(async (payload) => {
     const serialized = JSON.stringify(payload);
-    if (serialized === lastSavedRef.current) return { ok: true };
+    if (serialized === lastSavedRef.current) {
+      dirtyRef.current = false;
+      return { ok: true, skipped: true };
+    }
 
     const result = await saveRemotePortfolio(payload);
     lastSavedRef.current = serialized;
-    if (result?.updatedAt) setCloudUpdatedAt(result.updatedAt);
+    dirtyRef.current = false;
+    if (result?.updatedAt) {
+      cloudUpdatedAtRef.current = result.updatedAt;
+      setCloudUpdatedAt(result.updatedAt);
+    }
     return { ok: true, updatedAt: result?.updatedAt };
   }, []);
 
-  const pullFromCloud = useCallback(async () => {
+  const pullIfRemoteNewer = useCallback(async () => {
     const remote = await fetchRemotePortfolio();
-    if (!remote) throw new Error('Could not reach cloud portfolio.');
+    if (!remote?.updatedAt || isDefaultPortfolio(remote.data)) return remote;
 
-    replacePortfolioState(remote.data);
-    lastSavedRef.current = fingerprint(remote.data);
-    if (remote.updatedAt) setCloudUpdatedAt(remote.updatedAt);
+    if (isRemoteNewer(remote.updatedAt, cloudUpdatedAtRef.current)) {
+      applyRemoteState(remote.data, remote.updatedAt);
+    }
     return remote;
-  }, [replacePortfolioState]);
+  }, [applyRemoteState]);
 
   const reconcile = useCallback(async () => {
     const local = pickSyncPayload(portfolioRef.current);
-    const localUpdated = getLocalPortfolioUpdatedAt();
     const localHasData = !isDefaultPortfolio(local);
     let remote = null;
 
@@ -64,47 +91,66 @@ export function PortfolioSyncProvider({ children }) {
     }
 
     if (!remote) {
-      if (localHasData) {
+      if (localHasData && dirtyRef.current) {
         const result = await pushToCloud(local);
         return { direction: 'push', ...result };
       }
       return { direction: 'none' };
     }
 
-    const serverUpdated = remote.updatedAt ? new Date(remote.updatedAt).getTime() : 0;
     const serverEmpty = isDefaultPortfolio(remote.data);
 
-    if (localHasData && serverEmpty) {
-      const result = await pushToCloud(local);
-      return { direction: 'push', ...result };
+    if (remote.updatedAt) {
+      cloudUpdatedAtRef.current = remote.updatedAt;
+      setCloudUpdatedAt(remote.updatedAt);
     }
 
-    if (localUpdated > serverUpdated && localHasData) {
+    if (dirtyRef.current) {
       const result = await pushToCloud(local);
       return { direction: 'push', ...result };
     }
 
     if (!serverEmpty) {
-      replacePortfolioState(remote.data);
-      lastSavedRef.current = fingerprint(remote.data);
-      if (remote.updatedAt) setCloudUpdatedAt(remote.updatedAt);
+      applyRemoteState(remote.data, remote.updatedAt);
       return { direction: 'pull', updatedAt: remote.updatedAt };
+    }
+
+    if (localHasData) {
+      const result = await pushToCloud(local);
+      return { direction: 'push', ...result };
     }
 
     lastSavedRef.current = fingerprint(local);
     return { direction: 'none' };
-  }, [pushToCloud, replacePortfolioState]);
+  }, [applyRemoteState, pushToCloud]);
 
   const syncNow = useCallback(async () => {
     setSyncMessage('Syncing…');
     try {
-      await reconcile();
+      if (dirtyRef.current) {
+        await pushToCloud(pickSyncPayload(portfolioRef.current));
+        setSyncMessage('Saved to cloud.');
+        return;
+      }
+
+      const remote = await fetchRemotePortfolio();
+      if (!remote) throw new Error('Could not reach cloud portfolio.');
+
+      if (!isDefaultPortfolio(remote.data)) {
+        applyRemoteState(remote.data, remote.updatedAt);
+      } else {
+        lastSavedRef.current = fingerprint(remote.data);
+        if (remote.updatedAt) {
+          cloudUpdatedAtRef.current = remote.updatedAt;
+          setCloudUpdatedAt(remote.updatedAt);
+        }
+      }
       setSyncMessage('Synced just now.');
     } catch (error) {
       setSyncMessage(error.message || 'Sync failed.');
       throw error;
     }
-  }, [reconcile]);
+  }, [applyRemoteState, pushToCloud]);
 
   useEffect(() => {
     if (authLoading) return undefined;
@@ -112,7 +158,10 @@ export function PortfolioSyncProvider({ children }) {
     if (!user) {
       setSyncReady(false);
       setCloudUpdatedAt(null);
+      cloudUpdatedAtRef.current = null;
       lastSavedRef.current = '';
+      dirtyRef.current = false;
+      hydratedRef.current = false;
       return undefined;
     }
 
@@ -120,11 +169,14 @@ export function PortfolioSyncProvider({ children }) {
 
     async function hydrate() {
       setSyncReady(false);
+      suppressDirtyRef.current = true;
+      dirtyRef.current = false;
       try {
         if (!cancelled) await reconcile();
       } catch {
         if (!cancelled) setSyncMessage('Could not sync with cloud.');
       } finally {
+        hydratedRef.current = true;
         if (!cancelled) setSyncReady(true);
       }
     }
@@ -137,7 +189,14 @@ export function PortfolioSyncProvider({ children }) {
   }, [user, authLoading, reconcile]);
 
   useEffect(() => {
-    if (!user || !syncReady) return undefined;
+    if (!user || !syncReady || !hydratedRef.current) return undefined;
+
+    if (suppressDirtyRef.current) {
+      suppressDirtyRef.current = false;
+      return undefined;
+    }
+
+    dirtyRef.current = true;
 
     const payload = pickSyncPayload(portfolioState);
     const serialized = JSON.stringify(payload);
@@ -163,6 +222,7 @@ export function PortfolioSyncProvider({ children }) {
     if (!user || !syncReady) return undefined;
 
     async function flush() {
+      if (!dirtyRef.current) return;
       if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
       try {
         await pushToCloud(pickSyncPayload(portfolioRef.current));
@@ -174,15 +234,7 @@ export function PortfolioSyncProvider({ children }) {
     async function onVisible() {
       if (document.visibilityState !== 'visible') return;
       try {
-        const remote = await fetchRemotePortfolio();
-        if (!remote?.updatedAt) return;
-        const serverUpdated = new Date(remote.updatedAt).getTime();
-        const localUpdated = getLocalPortfolioUpdatedAt();
-        if (serverUpdated > localUpdated) {
-          replacePortfolioState(remote.data);
-          lastSavedRef.current = fingerprint(remote.data);
-          setCloudUpdatedAt(remote.updatedAt);
-        }
+        await pullIfRemoteNewer();
       } catch {
         // Ignore background pull errors.
       }
@@ -199,18 +251,24 @@ export function PortfolioSyncProvider({ children }) {
     window.addEventListener('pagehide', onHide);
     window.addEventListener('focus', onVisible);
 
+    const pollId = setInterval(() => {
+      if (dirtyRef.current) return;
+      pullIfRemoteNewer().catch(() => {});
+    }, PULL_INTERVAL_MS);
+
     return () => {
+      clearInterval(pollId);
       window.removeEventListener('pagehide', onHide);
       window.removeEventListener('focus', onVisible);
     };
-  }, [user, syncReady, pushToCloud, replacePortfolioState]);
+  }, [user, syncReady, pushToCloud, pullIfRemoteNewer]);
 
   const value = {
     syncReady,
     cloudUpdatedAt,
     syncMessage,
     syncNow,
-    pullFromCloud,
+    pullFromCloud: pullIfRemoteNewer,
     pushToCloud: () => pushToCloud(pickSyncPayload(portfolioRef.current)),
   };
 
