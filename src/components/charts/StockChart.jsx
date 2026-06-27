@@ -2,17 +2,61 @@ import { useEffect, useMemo, useState } from 'react';
 import {
   Area,
   AreaChart,
+  ReferenceDot,
   ResponsiveContainer,
   Tooltip,
   XAxis,
   YAxis,
 } from 'recharts';
+import { usePortfolio } from '../../hooks/usePortfolio';
 import { marketData } from '../../marketData/marketData';
 import { formatChartLabel, formatCurrency } from '../../lib/formatters';
 
 const RANGES = ['D', 'W', 'M', 'Y'];
 
+const MARKER_COLORS = {
+  buy: '#1ED760',
+  sell: '#ff453a',
+  short: '#ff9f0a',
+  cover: '#5ac8fa',
+};
+
+function snapTradesToChart(trades, chartData) {
+  if (!chartData.length) return [];
+
+  const minTs = chartData[0].ts;
+  const maxTs = chartData[chartData.length - 1].ts;
+
+  return trades
+    .filter((tx) => {
+      const txSec = Math.floor(tx.ts / 1000);
+      return txSec >= minTs && txSec <= maxTs;
+    })
+    .map((tx) => {
+      const txSec = Math.floor(tx.ts / 1000);
+      let closest = chartData[0];
+      let bestDiff = Math.abs(chartData[0].ts - txSec);
+
+      chartData.forEach((point) => {
+        const diff = Math.abs(point.ts - txSec);
+        if (diff < bestDiff) {
+          bestDiff = diff;
+          closest = point;
+        }
+      });
+
+      return {
+        id: tx.id,
+        side: tx.side,
+        price: tx.price,
+        label: closest.label,
+        shares: tx.shares,
+      };
+    });
+}
+
 export default function StockChart({ symbol }) {
+  const { transactions } = usePortfolio();
   const [range, setRange] = useState('D');
   const [candles, setCandles] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -48,6 +92,14 @@ export default function StockChart({ symbol }) {
       price: candles.c[index],
     }));
   }, [candles, range]);
+
+  const tradeMarkers = useMemo(() => {
+    const upper = symbol?.toUpperCase();
+    const stockTrades = transactions.filter(
+      (tx) => tx.kind === 'stock' && tx.symbol === upper,
+    );
+    return snapTradesToChart(stockTrades, data);
+  }, [data, symbol, transactions]);
 
   const isApproximate = candles?._source === 'approximate';
 
@@ -86,40 +138,60 @@ export default function StockChart({ symbol }) {
       {!loading && error && <div className="empty-state">{error}</div>}
 
       {!loading && !error && data.length > 0 && (
-        <div style={{ width: '100%', height: 240 }}>
-          <ResponsiveContainer>
-            <AreaChart data={data}>
-              <defs>
-                <linearGradient id="stockFill" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor="#1ED760" stopOpacity={0.35} />
-                  <stop offset="100%" stopColor="#1ED760" stopOpacity={0.02} />
-                </linearGradient>
-              </defs>
-              <XAxis
-                dataKey="label"
-                tick={{ fill: '#8E8E93', fontSize: 11 }}
-                axisLine={false}
-                tickLine={false}
-                minTickGap={32}
-                interval="preserveStartEnd"
-              />
-              <YAxis
-                domain={['auto', 'auto']}
-                tick={{ fill: '#8E8E93', fontSize: 11 }}
-                axisLine={false}
-                tickLine={false}
-                tickFormatter={(value) => `$${Math.round(value)}`}
-                width={52}
-              />
-              <Tooltip
-                contentStyle={{ background: '#16161D', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 12 }}
-                labelStyle={{ color: '#8E8E93' }}
-                formatter={(value) => [formatCurrency(value), 'Price']}
-              />
-              <Area type="monotone" dataKey="price" stroke="#1ED760" fill="url(#stockFill)" strokeWidth={2} dot={false} />
-            </AreaChart>
-          </ResponsiveContainer>
-        </div>
+        <>
+          <div style={{ width: '100%', height: 240 }}>
+            <ResponsiveContainer>
+              <AreaChart data={data}>
+                <defs>
+                  <linearGradient id="stockFill" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor="#1ED760" stopOpacity={0.35} />
+                    <stop offset="100%" stopColor="#1ED760" stopOpacity={0.02} />
+                  </linearGradient>
+                </defs>
+                <XAxis
+                  dataKey="label"
+                  tick={{ fill: '#8E8E93', fontSize: 11 }}
+                  axisLine={false}
+                  tickLine={false}
+                  minTickGap={32}
+                  interval="preserveStartEnd"
+                />
+                <YAxis
+                  domain={['auto', 'auto']}
+                  tick={{ fill: '#8E8E93', fontSize: 11 }}
+                  axisLine={false}
+                  tickLine={false}
+                  tickFormatter={(value) => `$${Math.round(value)}`}
+                  width={52}
+                />
+                <Tooltip
+                  contentStyle={{ background: '#16161D', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 12 }}
+                  labelStyle={{ color: '#8E8E93' }}
+                  formatter={(value) => [formatCurrency(value), 'Price']}
+                />
+                <Area type="monotone" dataKey="price" stroke="#1ED760" fill="url(#stockFill)" strokeWidth={2} dot={false} />
+                {tradeMarkers.map((marker) => (
+                  <ReferenceDot
+                    key={marker.id}
+                    x={marker.label}
+                    y={marker.price}
+                    r={5}
+                    fill={MARKER_COLORS[marker.side] || MARKER_COLORS.sell}
+                    stroke="#fff"
+                    strokeWidth={1}
+                  />
+                ))}
+              </AreaChart>
+            </ResponsiveContainer>
+          </div>
+          {tradeMarkers.length > 0 && (
+            <div className="trade-marker-legend">
+              <span><i className="marker-dot buy" /> Buy / Cover</span>
+              <span><i className="marker-dot sell" /> Sell</span>
+              <span><i className="marker-dot short" /> Short</span>
+            </div>
+          )}
+        </>
       )}
     </div>
   );

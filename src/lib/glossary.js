@@ -1,0 +1,15 @@
+export const GLOSSARY = {
+  unrealizedPL: 'Profit or loss on open positions — not locked in until you sell.',
+  realizedPL: 'Profit or loss from completed trades.',
+  avgCost: 'Average price you paid per share across all buys.',
+  strike: 'The price at which an option can be exercised.',
+  expiry: 'The last day the option contract is valid.',
+  premium: 'The price you pay (or receive) for an option contract.',
+  delta: 'How much the option price moves per $1 move in the stock.',
+  theta: 'How much value the option loses each day (time decay).',
+  vega: 'Sensitivity to changes in implied/realized volatility.',
+  limitOrder: 'An order that only fills at your specified price or better.',
+  stopOrder: 'Triggers a market order when price hits your stop level.',
+  marketOrder: 'Fills immediately at the current quoted price.',
+  shortSelling: 'Selling shares you do not own. Profit when the price falls; loss when it rises.',
+};

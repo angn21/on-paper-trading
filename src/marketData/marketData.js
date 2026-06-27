@@ -483,6 +483,31 @@ export const marketData = {
     }
   },
 
+  async getNews(symbol, limit = 5) {
+    const upper = symbol.toUpperCase();
+    const cacheKey = `news:${upper}`;
+    const cached = getCached(cacheKey);
+    if (cached) return cached;
+
+    try {
+      const to = new Date().toISOString().slice(0, 10);
+      const from = new Date(Date.now() - 7 * 86400000).toISOString().slice(0, 10);
+      const data = await finnhubFetch('/company-news', { symbol: upper, from, to });
+      const items = (Array.isArray(data) ? data : [])
+        .slice(0, limit)
+        .map((item) => ({
+          headline: item.headline,
+          source: item.source,
+          datetime: item.datetime,
+          url: item.url,
+        }));
+      setCache(cacheKey, items, CACHE_TTL.search);
+      return items;
+    } catch {
+      return [];
+    }
+  },
+
   async getMarketStatus() {
     const cacheKey = 'market-status:US';
 

@@ -3,13 +3,25 @@ import { marketData } from '../marketData/marketData';
 import { usePortfolioContext } from '../context/PortfolioContext';
 
 export function useQuoteRefresh() {
-  const { positions, options, watchlist, setQuote, setVolatility } = usePortfolioContext();
+  const {
+    positions,
+    options,
+    watchlist,
+    pendingOrders,
+    setQuote,
+    setVolatility,
+    processPendingOrders,
+    snapshotPortfolio,
+    totalValue,
+  } = usePortfolioContext();
 
   useEffect(() => {
     const symbols = new Set([
       ...Object.keys(positions),
       ...options.map((item) => item.symbol),
       ...watchlist,
+      ...pendingOrders.map((o) => o.symbol),
+      'SPY',
     ]);
 
     if (!symbols.size) return undefined;
@@ -17,6 +29,8 @@ export function useQuoteRefresh() {
     let cancelled = false;
 
     async function refreshQuotes() {
+      const priceMap = {};
+
       await Promise.all(
         [...symbols].map(async (symbol) => {
           try {
@@ -27,12 +41,18 @@ export function useQuoteRefresh() {
             if (!cancelled) {
               setQuote(symbol, quote);
               setVolatility(symbol, sigma);
+              priceMap[symbol] = quote;
             }
           } catch {
-            // Individual failures are handled in marketData fallback.
+            // Handled in marketData fallback.
           }
         }),
       );
+
+      if (!cancelled) {
+        processPendingOrders(priceMap);
+        snapshotPortfolio(totalValue, priceMap.SPY?.c);
+      }
     }
 
     refreshQuotes();
@@ -41,5 +61,15 @@ export function useQuoteRefresh() {
       cancelled = true;
       clearInterval(interval);
     };
-  }, [options, positions, watchlist, setQuote, setVolatility]);
+  }, [
+    options,
+    pendingOrders,
+    positions,
+    processPendingOrders,
+    setQuote,
+    setVolatility,
+    snapshotPortfolio,
+    totalValue,
+    watchlist,
+  ]);
 }

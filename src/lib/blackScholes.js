@@ -136,3 +136,28 @@ export function priceOptionPosition(position, underlyingPrice, sigma = 0.3, r = 
     unrealizedPL: marketValue - costBasis,
   };
 }
+
+/** Greeks from Black-Scholes (per share). */
+export function computeGreeks(S, K, T, sigma = 0.3, r = 0.045, type = 'call') {
+  if (T <= 0 || S <= 0 || K <= 0 || sigma <= 0) {
+    return { delta: 0, theta: 0, vega: 0 };
+  }
+
+  const sqrtT = Math.sqrt(T);
+  const d1 = (Math.log(S / K) + (r + 0.5 * sigma * sigma) * T) / (sigma * sqrtT);
+  const d2 = d1 - sigma * sqrtT;
+  const pdf = normPdf(d1);
+
+  const delta = type === 'call' ? normCdf(d1) : normCdf(d1) - 1;
+  const thetaCall =
+    (-(S * pdf * sigma) / (2 * sqrtT) - r * K * Math.exp(-r * T) * normCdf(d2)) / 365;
+  const thetaPut =
+    (-(S * pdf * sigma) / (2 * sqrtT) + r * K * Math.exp(-r * T) * normCdf(-d2)) / 365;
+  const vega = (S * pdf * sqrtT) / 100;
+
+  return {
+    delta: Number(delta.toFixed(3)),
+    theta: Number((type === 'call' ? thetaCall : thetaPut).toFixed(3)),
+    vega: Number(vega.toFixed(3)),
+  };
+}

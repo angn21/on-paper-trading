@@ -1,7 +1,9 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { priceOptionPosition } from '../lib/blackScholes';
+import { shouldFillOrder } from '../lib/orders';
+import { applyStockTrade, revertStockTransaction } from '../lib/positions';
 
-const STORAGE_KEY = 'on-paper-portfolio-v1';
+const STORAGE_KEY = 'on-paper-portfolio-v2';
 const STARTING_CASH = 100_000;
 
 const defaultState = {
@@ -11,11 +13,13 @@ const defaultState = {
   watchlist: [],
   transactions: [],
   portfolioHistory: [],
+  pendingOrders: [],
+  benchmarkHistory: [],
 };
 
 function loadState() {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
+    const raw = localStorage.getItem(STORAGE_KEY) || localStorage.getItem('on-paper-portfolio-v1');
     if (!raw) return defaultState;
     return { ...defaultState, ...JSON.parse(raw) };
   } catch {
@@ -33,22 +37,28 @@ export function PortfolioProvider({ children }) {
   const [state, setState] = useState(() => {
     const loaded = loadState();
     if (!loaded.portfolioHistory.length) {
-      return {
-        ...loaded,
-        portfolioHistory: [{ ts: Date.now(), totalValue: loaded.cash }],
-      };
+      return { ...loaded, portfolioHistory: [{ ts: Date.now(), totalValue: loaded.cash }] };
     }
     return loaded;
   });
   const [quotes, setQuotes] = useState({});
   const [volatility, setVolatilityState] = useState({});
+  const [priceHistory, setPriceHistory] = useState({});
+  const lastSnapshotRef = useRef(0);
 
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
   }, [state]);
 
   const setQuote = useCallback((symbol, quote) => {
-    setQuotes((prev) => ({ ...prev, [symbol.toUpperCase()]: quote }));
+    const upper = symbol.toUpperCase();
+    setQuotes((prev) => ({ ...prev, [upper]: quote }));
+    if (quote?.c) {
+      setPriceHistory((prev) => ({
+        ...prev,
+        [upper]: [...(prev[upper] || []), quote.c].slice(-24),
+      }));
+    }
   }, []);
 
   const setVolatility = useCallback((symbol, sigma) => {
@@ -68,116 +78,191 @@ export function PortfolioProvider({ children }) {
     });
   }, []);
 
-  const buyStock = useCallback((symbol, shares, price) => {
-    const upper = symbol.toUpperCase();
-    const qty = Number(shares);
-    const px = Number(price);
-
-    if (!upper || qty <= 0 || px <= 0) {
-      return { ok: false, error: 'Enter a valid quantity and price.' };
-    }
-
-    const cost = qty * px;
-
-    let result = { ok: false, error: 'Unable to buy.' };
+  const executeTrade = useCallback((upper, side, qty, px, note = '', orderType = 'market') => {
+    let result = { ok: false, error: 'Unable to complete trade.' };
 
     setState((prev) => {
-      if (cost > prev.cash) {
-        result = { ok: false, error: 'Not enough cash for this purchase.' };
+      const applied = applyStockTrade(prev, { upper, side, qty, px, note, orderType });
+      if (applied.error) {
+        result = { ok: false, error: applied.error };
         return prev;
       }
 
-      const existing = prev.positions[upper] || { shares: 0, avgCost: 0 };
-      const totalShares = existing.shares + qty;
-      const avgCost = (existing.shares * existing.avgCost + cost) / totalShares;
-
-      result = { ok: true };
+      result = {
+        ok: true,
+        txId: applied.transaction.id,
+        message: applied.message,
+      };
 
       return {
         ...prev,
-        cash: prev.cash - cost,
-        positions: {
-          ...prev.positions,
-          [upper]: { shares: totalShares, avgCost },
-        },
-        transactions: [
-          {
-            id: makeId(),
-            ts: Date.now(),
-            kind: 'stock',
-            side: 'buy',
-            symbol: upper,
-            shares: qty,
-            price: px,
-            total: cost,
-          },
-          ...prev.transactions,
-        ].slice(0, 200),
+        cash: applied.cash,
+        positions: applied.positions,
+        transactions: [applied.transaction, ...prev.transactions].slice(0, 200),
       };
     });
 
     return result;
   }, []);
 
-  const sellStock = useCallback((symbol, shares, price) => {
-    const upper = symbol.toUpperCase();
-    const qty = Number(shares);
-    const px = Number(price);
+  const buyStock = useCallback(
+    (symbol, shares, price, note = '', orderType = 'market') => {
+      const upper = symbol.toUpperCase();
+      const qty = Number(shares);
+      const px = Number(price);
+      if (!upper || qty <= 0 || px <= 0) {
+        return { ok: false, error: 'Enter a valid quantity and price.' };
+      }
+      return executeTrade(upper, 'buy', qty, px, note, orderType);
+    },
+    [executeTrade],
+  );
 
-    if (!upper || qty <= 0 || px <= 0) {
-      return { ok: false, error: 'Enter a valid quantity and price.' };
-    }
+  const sellStock = useCallback(
+    (symbol, shares, price, note = '', orderType = 'market') => {
+      const upper = symbol.toUpperCase();
+      const qty = Number(shares);
+      const px = Number(price);
+      if (!upper || qty <= 0 || px <= 0) {
+        return { ok: false, error: 'Enter a valid quantity and price.' };
+      }
+      return executeTrade(upper, 'sell', qty, px, note, orderType);
+    },
+    [executeTrade],
+  );
 
-    let result = { ok: false, error: 'Unable to sell.' };
+  const placeStockOrder = useCallback(
+    ({ symbol, side, orderType, shares, price, limitPrice, stopPrice, note = '' }) => {
+      const upper = symbol.toUpperCase();
+      const qty = Number(shares);
 
-    setState((prev) => {
-      const existing = prev.positions[upper];
-      if (!existing || qty > existing.shares) {
-        result = { ok: false, error: 'You do not own enough shares to sell.' };
-        return prev;
+      if (!upper || qty <= 0) {
+        return { ok: false, error: 'Enter a valid quantity.' };
       }
 
-      const proceeds = qty * px;
-      const remaining = existing.shares - qty;
-      const nextPositions = { ...prev.positions };
-
-      if (remaining <= 0) {
-        delete nextPositions[upper];
-      } else {
-        nextPositions[upper] = { shares: remaining, avgCost: existing.avgCost };
+      if (orderType === 'market') {
+        const px = Number(price);
+        if (px <= 0) return { ok: false, error: 'Invalid market price.' };
+        return side === 'buy'
+          ? buyStock(upper, qty, px, note, 'market')
+          : sellStock(upper, qty, px, note, 'market');
       }
 
-      result = { ok: true };
+      if (orderType === 'limit' && (!limitPrice || limitPrice <= 0)) {
+        return { ok: false, error: 'Enter a valid limit price.' };
+      }
+      if (orderType === 'stop' && (!stopPrice || stopPrice <= 0)) {
+        return { ok: false, error: 'Enter a valid stop price.' };
+      }
+
+      const order = {
+        id: makeId(),
+        symbol: upper,
+        side,
+        orderType,
+        shares: qty,
+        limitPrice: limitPrice ? Number(limitPrice) : null,
+        stopPrice: stopPrice ? Number(stopPrice) : null,
+        note,
+        createdAt: Date.now(),
+      };
+
+      setState((prev) => ({
+        ...prev,
+        pendingOrders: [order, ...prev.pendingOrders].slice(0, 50),
+      }));
 
       return {
-        ...prev,
-        cash: prev.cash + proceeds,
-        positions: nextPositions,
-        transactions: [
-          {
-            id: makeId(),
-            ts: Date.now(),
-            kind: 'stock',
-            side: 'sell',
-            symbol: upper,
-            shares: qty,
-            price: px,
-            total: proceeds,
-            realizedPL: (px - existing.avgCost) * qty,
-          },
-          ...prev.transactions,
-        ].slice(0, 200),
+        ok: true,
+        message: `${orderType} ${side} order placed for ${qty} ${upper}`,
+        pending: true,
       };
-    });
+    },
+    [buyStock, sellStock],
+  );
 
-    return result;
+  const cancelPendingOrder = useCallback((orderId) => {
+    setState((prev) => ({
+      ...prev,
+      pendingOrders: prev.pendingOrders.filter((o) => o.id !== orderId),
+    }));
   }, []);
 
-  const buyOption = useCallback((contract, contracts, premium) => {
+  const processPendingOrders = useCallback(
+    (priceMap) => {
+      setState((prev) => {
+        if (!prev.pendingOrders.length) return prev;
+
+        const remaining = [];
+        let next = prev;
+
+        prev.pendingOrders.forEach((order) => {
+          const price = priceMap[order.symbol]?.c;
+          if (!shouldFillOrder(order, price)) {
+            remaining.push(order);
+            return;
+          }
+
+          const fillPrice = order.orderType === 'limit' ? order.limitPrice : price;
+          const applied = applyStockTrade(next, {
+            upper: order.symbol,
+            side: order.side,
+            qty: order.shares,
+            px: fillPrice,
+            note: order.note,
+            orderType: order.orderType,
+          });
+
+          if (applied.error) {
+            remaining.push(order);
+            return;
+          }
+
+          next = {
+            ...next,
+            cash: applied.cash,
+            positions: applied.positions,
+            transactions: [applied.transaction, ...next.transactions].slice(0, 200),
+          };
+        });
+
+        if (remaining.length === prev.pendingOrders.length) return prev;
+        return { ...next, pendingOrders: remaining };
+      });
+    },
+    [],
+  );
+
+  const revertLastTransaction = useCallback(() => {
+    setState((prev) => {
+      const [last, ...rest] = prev.transactions;
+      if (!last || last.kind !== 'stock') return prev;
+      if (last.prevShares == null) return prev;
+      return revertStockTransaction({ ...prev, transactions: rest }, last);
+    });
+    return true;
+  }, []);
+
+  const updateTransactionNote = useCallback((txId, note) => {
+    setState((prev) => ({
+      ...prev,
+      transactions: prev.transactions.map((tx) =>
+        tx.id === txId ? { ...tx, note } : tx,
+      ),
+    }));
+  }, []);
+
+  const addCash = useCallback((amount) => {
+    const value = Number(amount);
+    if (value <= 0) return { ok: false, error: 'Enter a positive amount.' };
+    setState((prev) => ({ ...prev, cash: prev.cash + value }));
+    return { ok: true, message: `Added ${value.toFixed(2)} to cash.` };
+  }, []);
+
+  const buyOption = useCallback((contract, contracts, premium, note = '') => {
     const qty = Number(contracts);
     const px = Number(premium);
     const cost = qty * px * 100;
-
     if (qty <= 0 || px <= 0) {
       return { ok: false, error: 'Enter a valid contract count and premium.' };
     }
@@ -223,7 +308,7 @@ export function PortfolioProvider({ children }) {
         ];
       }
 
-      result = { ok: true };
+      result = { ok: true, message: `Bought ${qty} ${contract.type} contract(s).` };
 
       return {
         ...prev,
@@ -242,6 +327,7 @@ export function PortfolioProvider({ children }) {
             contracts: qty,
             price: px,
             total: cost,
+            note,
           },
           ...prev.transactions,
         ].slice(0, 200),
@@ -251,10 +337,9 @@ export function PortfolioProvider({ children }) {
     return result;
   }, []);
 
-  const sellOption = useCallback((positionId, contracts, premium) => {
+  const sellOption = useCallback((positionId, contracts, premium, note = '') => {
     const qty = Number(contracts);
     const px = Number(premium);
-
     if (qty <= 0 || px <= 0) {
       return { ok: false, error: 'Enter a valid contract count and premium.' };
     }
@@ -280,7 +365,10 @@ export function PortfolioProvider({ children }) {
         );
       }
 
-      result = { ok: true };
+      result = {
+        ok: true,
+        message: `Sold ${qty} contract(s) · ${remaining} remaining`,
+      };
 
       return {
         ...prev,
@@ -300,6 +388,7 @@ export function PortfolioProvider({ children }) {
             price: px,
             total: proceeds,
             realizedPL: (px - existing.avgPremium) * qty * 100,
+            note,
           },
           ...prev.transactions,
         ].slice(0, 200),
@@ -309,25 +398,42 @@ export function PortfolioProvider({ children }) {
     return result;
   }, []);
 
-  const snapshotPortfolio = useCallback((totalValue) => {
+  const snapshotPortfolio = useCallback((totalValue, spyPrice = null) => {
+    const now = Date.now();
+    if (now - lastSnapshotRef.current < 55_000) return;
+    lastSnapshotRef.current = now;
+
     setState((prev) => {
-      const now = Date.now();
       const last = prev.portfolioHistory[prev.portfolioHistory.length - 1];
+      let portfolioHistory = prev.portfolioHistory;
       if (last && Math.abs(last.ts - now) < 60_000) {
-        const updated = [...prev.portfolioHistory];
-        updated[updated.length - 1] = { ts: now, totalValue };
-        return { ...prev, portfolioHistory: updated.slice(-500) };
+        portfolioHistory = [...prev.portfolioHistory];
+        portfolioHistory[portfolioHistory.length - 1] = { ts: now, totalValue };
+      } else {
+        portfolioHistory = [...prev.portfolioHistory, { ts: now, totalValue }].slice(-500);
       }
 
-      return {
-        ...prev,
-        portfolioHistory: [...prev.portfolioHistory, { ts: now, totalValue }].slice(-500),
-      };
+      let benchmarkHistory = prev.benchmarkHistory;
+      if (spyPrice && spyPrice > 0) {
+        const benchPoint = { ts: now, spyPrice, portfolioValue: totalValue };
+        const lastBench = prev.benchmarkHistory[prev.benchmarkHistory.length - 1];
+        if (lastBench && Math.abs(lastBench.ts - now) < 60_000) {
+          benchmarkHistory = [...prev.benchmarkHistory];
+          benchmarkHistory[benchmarkHistory.length - 1] = benchPoint;
+        } else {
+          benchmarkHistory = [...prev.benchmarkHistory, benchPoint].slice(-500);
+        }
+      }
+
+      return { ...prev, portfolioHistory, benchmarkHistory };
     });
   }, []);
 
   const resetPortfolio = useCallback(() => {
-    setState(defaultState);
+    setState({
+      ...defaultState,
+      portfolioHistory: [{ ts: Date.now(), totalValue: STARTING_CASH }],
+    });
     setQuotes({});
     setVolatilityState({});
   }, []);
@@ -338,6 +444,7 @@ export function PortfolioProvider({ children }) {
       const price = quote?.c ?? position.avgCost;
       const marketValue = price * position.shares;
       const costBasis = position.avgCost * position.shares;
+      const isShort = position.shares < 0;
       return {
         symbol,
         shares: position.shares,
@@ -346,6 +453,7 @@ export function PortfolioProvider({ children }) {
         marketValue,
         unrealizedPL: marketValue - costBasis,
         dayChangePct: quote?.dp ?? 0,
+        isShort,
       };
     });
 
@@ -353,11 +461,7 @@ export function PortfolioProvider({ children }) {
       const underlying = quotes[position.symbol]?.c ?? seededFallbackPrice(position.symbol);
       const sigma = volatility[position.symbol] ?? 0.3;
       const pricing = priceOptionPosition(position, underlying, sigma);
-      return {
-        ...position,
-        underlying,
-        ...pricing,
-      };
+      return { ...position, underlying, ...pricing };
     });
 
     const stocksValue = stockPositions.reduce((sum, item) => sum + item.marketValue, 0);
@@ -365,6 +469,23 @@ export function PortfolioProvider({ children }) {
     const totalValue = state.cash + stocksValue + optionsValue;
     const stockPL = stockPositions.reduce((sum, item) => sum + item.unrealizedPL, 0);
     const optionsPL = optionPositions.reduce((sum, item) => sum + item.unrealizedPL, 0);
+
+    const allocation =
+      totalValue > 0
+        ? {
+            cash: (state.cash / totalValue) * 100,
+            stocks: (stocksValue / totalValue) * 100,
+            options: (optionsValue / totalValue) * 100,
+          }
+        : { cash: 100, stocks: 0, options: 0 };
+
+    const realizedPL = state.transactions.reduce(
+      (sum, tx) => sum + (tx.realizedPL || 0),
+      0,
+    );
+    const winningTrades = state.transactions.filter((tx) => (tx.realizedPL || 0) > 0).length;
+    const losingTrades = state.transactions.filter((tx) => (tx.realizedPL || 0) < 0).length;
+    const closedTrades = winningTrades + losingTrades;
 
     return {
       stockPositions,
@@ -375,6 +496,13 @@ export function PortfolioProvider({ children }) {
       stockPL,
       optionsPL,
       totalPL: stockPL + optionsPL,
+      allocation,
+      performance: {
+        realizedPL,
+        winRate: closedTrades ? (winningTrades / closedTrades) * 100 : 0,
+        closedTrades,
+        totalTrades: state.transactions.length,
+      },
     };
   }, [quotes, state, volatility]);
 
@@ -383,11 +511,18 @@ export function PortfolioProvider({ children }) {
     ...computed,
     quotes,
     volatility,
+    priceHistory,
     setQuote,
     setVolatility,
     toggleWatchlist,
     buyStock,
     sellStock,
+    placeStockOrder,
+    cancelPendingOrder,
+    processPendingOrders,
+    revertLastTransaction,
+    updateTransactionNote,
+    addCash,
     buyOption,
     sellOption,
     snapshotPortfolio,

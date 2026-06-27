@@ -102,7 +102,13 @@ export default function OptionsChain({ symbol, underlyingPrice }) {
         ))}
       </div>
 
-      {selected && <OptionsTradePanel contract={selected} sigma={sigma} />}
+      {selected && (
+        <OptionsTradePanel
+          contract={selected}
+          sigma={sigma}
+          underlyingPrice={underlyingPrice}
+        />
+      )}
     </div>
   );
 }

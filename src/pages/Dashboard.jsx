@@ -1,6 +1,13 @@
-import { useEffect } from 'react';
 import ApiBanner from '../components/ApiBanner';
+import AnimatedCurrency from '../components/AnimatedCurrency';
+import BenchmarkChart from '../components/BenchmarkChart';
 import MarketStatus from '../components/MarketStatus';
+import OfflineBanner from '../components/OfflineBanner';
+import PendingOrders from '../components/PendingOrders';
+import PerformanceStats from '../components/PerformanceStats';
+import PortfolioActions from '../components/PortfolioActions';
+import PortfolioAllocation from '../components/PortfolioAllocation';
+import SectorAllocation from '../components/SectorAllocation';
 import PortfolioChart from '../components/charts/PortfolioChart';
 import PositionsList from '../components/PositionsList';
 import TransactionHistory from '../components/TransactionHistory';
@@ -10,30 +17,47 @@ import { useQuoteRefresh } from '../hooks/useQuoteRefresh';
 import { formatCurrency, plClass } from '../lib/formatters';
 
 export default function Dashboard() {
-  const { cash, totalValue, totalPL, snapshotPortfolio } = usePortfolio();
+  const {
+    cash,
+    totalValue,
+    totalPL,
+    allocation,
+    performance,
+    portfolioHistory,
+    benchmarkHistory,
+    pendingOrders,
+    stockPositions,
+    optionPositions,
+  } = usePortfolio();
+
   useQuoteRefresh();
 
-  useEffect(() => {
-    snapshotPortfolio(totalValue);
-  }, [snapshotPortfolio, totalValue]);
+  const hasPositions = stockPositions.length > 0 || optionPositions.length > 0;
 
   return (
     <div className="section-gap" style={{ paddingTop: 16 }}>
       <ApiBanner />
+      <OfflineBanner />
       <MarketStatus />
 
       <section className="card hero-card">
-        <div style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>Total Value</div>
-        <div style={{ fontSize: '2.2rem', fontWeight: 700, marginTop: 4 }}>{formatCurrency(totalValue)}</div>
-        <div className={plClass(totalPL)} style={{ marginTop: 6 }}>
-          {formatCurrency(totalPL)} unrealized P/L
+        <div className="stat-label">Total Value</div>
+        <div className="hero-value">
+          <AnimatedCurrency value={totalValue} />
         </div>
-        <div style={{ marginTop: 16, color: 'var(--text-muted)' }}>
-          Cash · {formatCurrency(cash)}
+        <div className={`hero-pl tabular ${plClass(totalPL)}`}>
+          <AnimatedCurrency value={totalPL} className={plClass(totalPL)} /> unrealized P/L
         </div>
+        <div className="hero-cash">Cash · {formatCurrency(cash)}</div>
       </section>
 
       <PortfolioChart />
+      <BenchmarkChart portfolioHistory={portfolioHistory} benchmarkHistory={benchmarkHistory} />
+      <PortfolioAllocation allocation={allocation} />
+      <SectorAllocation />
+      <PerformanceStats performance={performance} />
+      <PendingOrders orders={pendingOrders} />
+      <PortfolioActions />
 
       <section className="card">
         <h2 className="card-title">Watchlist</h2>
@@ -42,7 +66,11 @@ export default function Dashboard() {
 
       <section className="card">
         <h2 className="card-title">Positions</h2>
-        <PositionsList />
+        {hasPositions ? <PositionsList /> : (
+          <div className="empty-state">
+            No open positions yet. Search a ticker to place your first paper trade.
+          </div>
+        )}
       </section>
 
       <section className="card">

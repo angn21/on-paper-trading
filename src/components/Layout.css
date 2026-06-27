@@ -16,6 +16,17 @@
   padding-bottom: 14px;
 }
 
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.theme-toggle {
+  min-width: 36px;
+  padding: 6px 8px;
+}
+
 .brand {
   display: flex;
   align-items: center;
@@ -63,10 +74,23 @@
 }
 
 .app-footer {
-  width: 100%;
-  padding: 12px 0 88px;
+  flex: 0;
+  padding-top: 12px;
   text-align: center;
   color: var(--text-muted);
   font-size: 0.72rem;
   line-height: 1.5;
+}
+
+.footer-inner {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  align-items: center;
+}
+
+.footer-status-link {
+  color: var(--text-muted);
+  text-decoration: underline;
+  font-size: 0.7rem;
 }

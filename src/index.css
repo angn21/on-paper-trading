@@ -215,3 +215,404 @@ a {
     background-position: -200% 0;
   }
 }
+
+/* Typography */
+.tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+.stat-label {
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  margin-bottom: 4px;
+}
+
+.stat-value {
+  font-weight: 600;
+  font-size: 1rem;
+}
+
+.hero-value {
+  font-size: 2.2rem;
+  font-weight: 700;
+  margin-top: 4px;
+}
+
+.hero-pl {
+  margin-top: 6px;
+  font-size: 0.95rem;
+}
+
+.hero-cash {
+  margin-top: 16px;
+  color: var(--text-muted);
+}
+
+.field {
+  display: block;
+  margin-bottom: 12px;
+}
+
+.field > span {
+  display: block;
+  margin-bottom: 6px;
+  color: var(--text-muted);
+  font-size: 0.85rem;
+}
+
+.btn-ghost {
+  background: transparent;
+  color: var(--text-muted);
+  border: 1px solid var(--border);
+}
+
+.btn-sm {
+  padding: 6px 10px;
+  font-size: 0.8rem;
+}
+
+.trade-summary {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-top: 16px;
+  font-size: 0.9rem;
+}
+
+.trade-error {
+  margin-top: 12px;
+  font-size: 0.85rem;
+  color: var(--danger);
+}
+
+.position-grid,
+.stats-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.allocation-bar {
+  display: flex;
+  height: 10px;
+  border-radius: 999px;
+  overflow: hidden;
+  background: var(--surface-2);
+}
+
+.allocation-segment {
+  min-width: 2px;
+  transition: width 0.3s ease;
+}
+
+.allocation-legend {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 10px;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.glossary-tip {
+  cursor: help;
+  border-bottom: 1px dotted var(--text-muted);
+}
+
+.glossary-icon {
+  font-size: 0.75rem;
+  opacity: 0.7;
+}
+
+.order-type-badge {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 2px 6px;
+  border-radius: 6px;
+  background: var(--surface-2);
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.pending-orders {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.pending-order-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border);
+  font-size: 0.9rem;
+}
+
+.pending-order-row:last-child {
+  border-bottom: none;
+}
+
+.actions-row {
+  display: flex;
+  gap: 8px;
+  align-items: flex-end;
+  margin-bottom: 12px;
+}
+
+.reset-confirm {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  font-size: 0.85rem;
+}
+
+.news-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.news-list li {
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.news-list li:last-child {
+  border-bottom: none;
+}
+
+.news-list a {
+  color: var(--text);
+  font-weight: 500;
+  font-size: 0.9rem;
+}
+
+.news-meta {
+  display: block;
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  margin-top: 4px;
+}
+
+.greeks-row {
+  display: flex;
+  gap: 16px;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  margin-bottom: 12px;
+}
+
+.options-trade-title {
+  margin: 0 0 8px;
+  font-size: 1rem;
+}
+
+.partial-sell-hint {
+  font-size: 0.8rem;
+  color: var(--accent);
+  margin: 8px 0 0;
+}
+
+.input-with-action {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.input-with-action .input {
+  flex: 1;
+}
+
+.note-link {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  padding: 0 0 12px;
+  text-align: left;
+}
+
+.note-edit {
+  display: flex;
+  gap: 8px;
+  padding-bottom: 12px;
+  flex-wrap: wrap;
+}
+
+.note-edit .input {
+  flex: 1;
+  min-width: 160px;
+}
+
+.position-symbol {
+  font-weight: 700;
+}
+
+.position-meta {
+  color: var(--text-muted);
+  font-size: 0.85rem;
+}
+
+.position-row-main {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex: 1;
+}
+
+.position-row-values {
+  text-align: right;
+}
+
+.back-link {
+  color: var(--text-muted);
+  font-size: 0.9rem;
+}
+
+.chart-footnote {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  margin: 8px 0 0;
+}
+
+.status-list {
+  list-style: none;
+  margin: 16px 0 0;
+  padding: 0;
+}
+
+.status-list li {
+  display: flex;
+  justify-content: space-between;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.animated-value {
+  transition: color 0.3s ease, transform 0.3s ease;
+  display: inline-block;
+}
+
+.animated-value.flash-up {
+  color: var(--accent);
+  transform: scale(1.02);
+}
+
+.animated-value.flash-down {
+  color: var(--danger);
+  transform: scale(1.02);
+}
+
+.sparkline {
+  flex-shrink: 0;
+  opacity: 0.85;
+}
+
+.short-hint {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  margin: 0 0 12px;
+  line-height: 1.4;
+}
+
+.trade-marker-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 10px;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.marker-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  margin-right: 4px;
+  vertical-align: middle;
+  font-style: normal;
+}
+
+.marker-dot.buy {
+  background: #1ed760;
+}
+
+.marker-dot.sell {
+  background: #ff453a;
+}
+
+.marker-dot.short {
+  background: #ff9f0a;
+}
+
+.sector-pie-wrap {
+  margin: 0 auto;
+}
+
+.sector-legend {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+}
+
+.sector-legend li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 0;
+  font-size: 0.85rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.sector-legend li:last-child {
+  border-bottom: none;
+}
+
+.sector-legend li span:last-child {
+  margin-left: auto;
+}
+
+.sector-swatch {
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+  flex-shrink: 0;
+}
+
+.stock-hero-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: start;
+}
+
+.watch-btn {
+  min-width: 44px;
+}
+
+/* Light theme */
+[data-theme='light'] {
+  --bg: #f5f5f7;
+  --surface: #ffffff;
+  --surface-2: #ebebf0;
+  --text: #1c1c1e;
+  --text-muted: #636366;
+  --border: rgba(0, 0, 0, 0.08);
+  --shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
+  --accent-dim: rgba(30, 215, 96, 0.2);
+}
+
+[data-theme='light'] .app-header,
+[data-theme='light'] .bottom-nav {
+  background: rgba(255, 255, 255, 0.92);
+}
+
+[data-theme='light'] .skeleton {
+  background: linear-gradient(90deg, var(--surface-2) 25%, #d8d8de 50%, var(--surface-2) 75%);
+}
+

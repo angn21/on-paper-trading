@@ -1,0 +1,17 @@
+{
+  "name": "On Paper — Investing Playground",
+  "short_name": "On Paper",
+  "description": "Paper trading playground for learning investing.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0b0b0f",
+  "theme_color": "#1ed760",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
