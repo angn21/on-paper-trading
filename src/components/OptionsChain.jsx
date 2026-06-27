@@ -1,35 +1,31 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { generateOptionsChain } from '../lib/blackScholes';
 import { formatVolatilityPercent } from '../lib/volatility';
-import { marketData } from '../marketData/marketData';
+import { resolveUnderlyingPrice, resolveVolatility } from '../lib/portfolioStorage';
 import { usePortfolio } from '../hooks/usePortfolio';
 import { formatCurrency } from '../lib/formatters';
 import OptionsTradePanel from './OptionsTradePanel';
 
-export default function OptionsChain({ symbol, underlyingPrice }) {
-  const { volatility, setVolatility } = usePortfolio();
+function seededFallbackPrice(symbol) {
+  let hash = 0;
+  for (let i = 0; i < symbol.length; i += 1) {
+    hash = (hash << 5) - hash + symbol.charCodeAt(i);
+    hash |= 0;
+  }
+  return 20 + (Math.abs(hash) % 480);
+}
+
+export default function OptionsChain({ symbol }) {
+  const { quotes, volatility, portfolioState } = usePortfolio();
   const upper = symbol?.toUpperCase();
-  const [sigma, setSigma] = useState(volatility[upper] ?? 0.3);
 
-  useEffect(() => {
-    let cancelled = false;
-
-    if (volatility[upper]) {
-      setSigma(volatility[upper]);
-      return undefined;
-    }
-
-    marketData.getVolatility(upper).then((value) => {
-      if (!cancelled) {
-        setSigma(value);
-        setVolatility(upper, value);
-      }
-    });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [setVolatility, upper, volatility]);
+  const underlyingPrice = resolveUnderlyingPrice(
+    upper,
+    quotes,
+    portfolioState.marketSnapshot,
+    seededFallbackPrice,
+  );
+  const sigma = resolveVolatility(upper, volatility, portfolioState.marketSnapshot);
 
   const chain = useMemo(
     () => generateOptionsChain(symbol, underlyingPrice, sigma),
@@ -78,8 +74,20 @@ export default function OptionsChain({ symbol, underlyingPrice }) {
           ))}
         </div>
 
-        <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: 8 }}>
-          Strike · Mid premium
+        <div
+          className="options-chain-header"
+          style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            fontSize: '0.8rem',
+            color: 'var(--text-muted)',
+            marginBottom: 4,
+            paddingBottom: 4,
+            borderBottom: '1px solid var(--border)',
+          }}
+        >
+          <span>Strike</span>
+          <span>Mid premium</span>
         </div>
 
         {rows.map((row) => (

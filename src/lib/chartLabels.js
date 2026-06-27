@@ -47,3 +47,43 @@ export function historyToChartPoints(history, range, windows) {
     value: point.totalValue,
   }));
 }
+
+/** Pad a flat or narrow range so Recharts can draw meaningful ticks. */
+export function computeChartYDomain(values) {
+  if (!values.length) return ['auto', 'auto'];
+
+  const numeric = values.filter((v) => v != null && !Number.isNaN(v));
+  if (!numeric.length) return ['auto', 'auto'];
+
+  const min = Math.min(...numeric);
+  const max = Math.max(...numeric);
+  const span = max - min;
+
+  if (span === 0) {
+    const pad = Math.max(Math.abs(max) * 0.002, 1);
+    return [min - pad, max + pad];
+  }
+
+  const padding = Math.max(span * 0.15, Math.abs(max) * 0.0005);
+  return [min - padding, max + padding];
+}
+
+export function formatPortfolioAxisValue(value, span) {
+  if (span < 2_000) {
+    return new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: 'USD',
+      maximumFractionDigits: 0,
+    }).format(value);
+  }
+  if (span < 20_000) {
+    return `$${(value / 1000).toFixed(1)}k`;
+  }
+  return `$${Math.round(value / 1000)}k`;
+}
+
+export function formatPercentAxisValue(value, span) {
+  if (span < 0.15) return `${value.toFixed(2)}%`;
+  if (span < 1.5) return `${value.toFixed(1)}%`;
+  return `${value.toFixed(0)}%`;
+}

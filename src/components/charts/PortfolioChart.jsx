@@ -9,8 +9,10 @@ import {
 } from 'recharts';
 import { usePortfolio } from '../../hooks/usePortfolio';
 import {
+  computeChartYDomain,
   formatChartTick,
   formatChartTooltipLabel,
+  formatPortfolioAxisValue,
   historyToChartPoints,
 } from '../../lib/chartLabels';
 import { formatCurrency } from '../../lib/formatters';
@@ -31,6 +33,17 @@ export default function PortfolioChart() {
     () => historyToChartPoints(portfolioHistory, range, WINDOWS),
     [portfolioHistory, range],
   );
+
+  const yDomain = useMemo(
+    () => computeChartYDomain(data.map((point) => point.value)),
+    [data],
+  );
+
+  const valueSpan = useMemo(() => {
+    const values = data.map((point) => point.value);
+    if (!values.length) return 0;
+    return Math.max(...values) - Math.min(...values);
+  }, [data]);
 
   if (!data.length) {
     return (
@@ -78,12 +91,12 @@ export default function PortfolioChart() {
               tickLine={false}
             />
             <YAxis
-              domain={['auto', 'auto']}
+              domain={yDomain}
               tick={{ fill: '#8E8E93', fontSize: 11 }}
               axisLine={false}
               tickLine={false}
-              tickFormatter={(value) => `$${Math.round(value / 1000)}k`}
-              width={42}
+              tickFormatter={(value) => formatPortfolioAxisValue(value, valueSpan)}
+              width={52}
             />
             <Tooltip
               contentStyle={{ background: '#16161D', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 12 }}

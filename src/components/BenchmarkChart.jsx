@@ -7,7 +7,12 @@ import {
   YAxis,
 } from 'recharts';
 import { useMemo } from 'react';
-import { formatChartTick, formatChartTooltipLabel } from '../lib/chartLabels';
+import {
+  computeChartYDomain,
+  formatChartTick,
+  formatChartTooltipLabel,
+  formatPercentAxisValue,
+} from '../lib/chartLabels';
 
 export default function BenchmarkChart({ portfolioHistory, benchmarkHistory }) {
   const data = useMemo(() => {
@@ -26,6 +31,17 @@ export default function BenchmarkChart({ portfolioHistory, benchmarkHistory }) {
     });
   }, [portfolioHistory, benchmarkHistory]);
 
+  const yDomain = useMemo(() => {
+    const values = data.flatMap((point) => [point.portfolio, point.spy].filter((v) => v != null));
+    return computeChartYDomain(values);
+  }, [data]);
+
+  const percentSpan = useMemo(() => {
+    const values = data.flatMap((point) => [point.portfolio, point.spy].filter((v) => v != null));
+    if (!values.length) return 0;
+    return Math.max(...values) - Math.min(...values);
+  }, [data]);
+
   if (data.length < 2) return null;
 
   return (
@@ -42,7 +58,13 @@ export default function BenchmarkChart({ portfolioHistory, benchmarkHistory }) {
               tick={{ fontSize: 10 }}
               stroke="var(--text-muted)"
             />
-            <YAxis tickFormatter={(v) => `${v.toFixed(0)}%`} tick={{ fontSize: 10 }} stroke="var(--text-muted)" width={40} />
+            <YAxis
+              domain={yDomain}
+              tickFormatter={(v) => formatPercentAxisValue(v, percentSpan)}
+              tick={{ fontSize: 10 }}
+              stroke="var(--text-muted)"
+              width={48}
+            />
             <Tooltip
               labelFormatter={formatChartTooltipLabel}
               formatter={(v) => `${Number(v).toFixed(2)}%`}

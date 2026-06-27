@@ -13,6 +13,7 @@ export function useQuoteRefresh() {
     processPendingOrders,
     snapshotPortfolio,
     totalValue,
+    isQuoteRefreshPaused,
   } = usePortfolioContext();
 
   const totalValueRef = useRef(totalValue);
@@ -63,7 +64,9 @@ export function useQuoteRefresh() {
 
     async function tick() {
       if (cancelled) return;
-      await refreshQuotes();
+      if (!isQuoteRefreshPaused()) {
+        await refreshQuotes();
+      }
       if (cancelled) return;
       timer = setTimeout(tick, marketData.getQuoteRefreshInterval());
     }
@@ -83,5 +86,6 @@ export function useQuoteRefresh() {
     setVolatility,
     snapshotPortfolio,
     watchlist,
+    isQuoteRefreshPaused,
   ]);
 }

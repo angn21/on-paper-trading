@@ -4,18 +4,12 @@ import {
   buildMarketSnapshot,
   defaultPortfolioState,
   pickSyncPayload,
-  symbolsForPortfolio,
 } from '../lib/portfolioStorage';
-import { marketData } from '../marketData/marketData';
 import { useAuth } from './AuthContext';
 import { usePortfolioContext } from './PortfolioContext';
 
 const PortfolioSyncContext = createContext(null);
 const PULL_INTERVAL_MS = 15_000;
-
-function portfolioSymbols(state) {
-  return symbolsForPortfolio(state);
-}
 
 function seedQuotesFromSnapshot(data, setQuote, setVolatility) {
   const snapshot = data?.marketSnapshot;
@@ -42,10 +36,6 @@ function withMarketSnapshot(state, quotes, volatility) {
   };
 }
 
-function refreshMarketDataForPortfolio(state) {
-  marketData.invalidateQuotes(portfolioSymbols(state));
-}
-
 function fingerprint(state) {
   return JSON.stringify(pickSyncPayload(state));
 }
@@ -62,7 +52,7 @@ function isRemoteNewer(remoteUpdatedAt, knownUpdatedAt) {
 
 export function PortfolioSyncProvider({ children }) {
   const { user, loading: authLoading } = useAuth();
-  const { portfolioState, replacePortfolioState, invalidateMarketQuotes, quotes, volatility, setQuote, setVolatility } = usePortfolioContext();
+  const { portfolioState, replacePortfolioState, quotes, volatility, setQuote, setVolatility, pauseQuoteRefresh, resumeQuoteRefresh } = usePortfolioContext();
   const [syncReady, setSyncReady] = useState(false);
   const [cloudUpdatedAt, setCloudUpdatedAt] = useState(null);
   const [syncMessage, setSyncMessage] = useState('');
@@ -84,16 +74,15 @@ export function PortfolioSyncProvider({ children }) {
   const applyRemoteState = useCallback((data, updatedAt) => {
     suppressDirtyRef.current = true;
     dirtyRef.current = false;
-    invalidateMarketQuotes();
-    refreshMarketDataForPortfolio(data);
     replacePortfolioState(data);
     seedQuotesFromSnapshot(data, setQuote, setVolatility);
+    pauseQuoteRefresh(180_000);
     lastSavedRef.current = fingerprint(data);
     if (updatedAt) {
       cloudUpdatedAtRef.current = updatedAt;
       setCloudUpdatedAt(updatedAt);
     }
-  }, [invalidateMarketQuotes, replacePortfolioState, setQuote, setVolatility]);
+  }, [pauseQuoteRefresh, replacePortfolioState, setQuote, setVolatility]);
 
   const pushToCloud = useCallback(async (payload) => {
     const serialized = JSON.stringify(payload);
@@ -256,6 +245,7 @@ export function PortfolioSyncProvider({ children }) {
     }
 
     dirtyRef.current = true;
+    resumeQuoteRefresh();
 
     const payload = pickSyncPayload(portfolioState);
     const serialized = JSON.stringify(payload);
@@ -279,7 +269,7 @@ export function PortfolioSyncProvider({ children }) {
     return () => {
       if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
     };
-  }, [user, syncReady, portfolioState, pushToCloud]);
+  }, [user, syncReady, portfolioState, pushToCloud, resumeQuoteRefresh]);
 
   useEffect(() => {
     if (!user || !syncReady) return undefined;
