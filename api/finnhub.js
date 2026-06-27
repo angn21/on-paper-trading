@@ -13,11 +13,16 @@ export default async function handler(request) {
   }
 
   const url = new URL(request.url);
-  const finnhubPath = url.pathname.replace(/^\/api\/finnhub\/?/, '');
+  const finnhubPath = url.searchParams.get('path') || '';
+  if (!finnhubPath) {
+    return Response.json({ error: 'Missing path parameter' }, { status: 400 });
+  }
 
-  const finnhubUrl = new URL(`${FINNHUB_BASE}/${finnhubPath}`);
+  const finnhubUrl = new URL(`${FINNHUB_BASE}/${finnhubPath.replace(/^\/+/, '')}`);
   url.searchParams.forEach((value, key) => {
-    finnhubUrl.searchParams.set(key, value);
+    if (key !== 'path') {
+      finnhubUrl.searchParams.set(key, value);
+    }
   });
   finnhubUrl.searchParams.set('token', token);
 

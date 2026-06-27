@@ -19,8 +19,9 @@ export function createFinnhubMiddleware() {
 
     try {
       const requestUrl = new URL(req.url, 'http://localhost');
-      const path = requestUrl.pathname.replace(/^\/api\/finnhub\/?/, '');
+      const path = requestUrl.searchParams.get('path') || '';
       const params = new URLSearchParams(requestUrl.searchParams);
+      params.delete('path');
       const result = await proxyFinnhubRequest(path, params);
 
       res.statusCode = result.status;

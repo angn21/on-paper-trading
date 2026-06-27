@@ -151,7 +151,8 @@ function simulatedCandles(symbol, range) {
 }
 
 async function finnhubFetch(path, params = {}) {
-  const url = new URL(`${API_BASE}${path}`, window.location.origin);
+  const url = new URL(API_BASE, window.location.origin);
+  url.searchParams.set('path', path.replace(/^\//, ''));
   Object.entries(params).forEach(([key, value]) => {
     if (value != null) url.searchParams.set(key, String(value));
   });
@@ -201,8 +202,12 @@ async function liveQuote(symbol) {
   if (cached) return cached;
 
   const data = await finnhubFetch('/quote', { symbol: upper });
-  if (!data.c) {
+  const price = data.c || data.pc;
+  if (!price) {
     throw new Error('invalid_quote');
+  }
+  if (!data.c && data.pc) {
+    data.c = data.pc;
   }
 
   setCache(cacheKey, data, CACHE_TTL.quote);
