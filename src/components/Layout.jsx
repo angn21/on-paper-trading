@@ -20,24 +20,26 @@ export default function Layout() {
   return (
     <div className="app-shell">
       <header className="app-header">
-        <div className="app-content header-inner">
-          <Link to="/" className="brand">
-            <span className="brand-mark" aria-hidden>◎</span>
-            <span>On Paper</span>
-          </Link>
-          <div className="header-actions">
-            <button type="button" className="btn btn-ghost btn-sm theme-toggle" onClick={toggleTheme} aria-label="Toggle theme">
-              {theme === 'dark' ? '☀' : '☾'}
-            </button>
-            <NavLink to="/search" className="search-link">
-              Search
-            </NavLink>
-            <NavLink to="/account" className="account-link">
-              {user ? user.username : 'Account'}
-            </NavLink>
+        <div className="app-content header-stack">
+          <div className="header-inner">
+            <Link to="/" className="brand">
+              <span className="brand-mark" aria-hidden>◎</span>
+              <span>On Paper</span>
+            </Link>
+            <div className="header-actions">
+              <button type="button" className="btn btn-ghost btn-sm theme-toggle" onClick={toggleTheme} aria-label="Toggle theme">
+                {theme === 'dark' ? '☀' : '☾'}
+              </button>
+              <NavLink to="/search" className="search-link">
+                Search
+              </NavLink>
+              <NavLink to="/account" className="account-link">
+                {user ? user.username : 'Account'}
+              </NavLink>
+            </div>
           </div>
+          <MarketIndicesBanner />
         </div>
-        <MarketIndicesBanner />
       </header>
 
       <main className="app-content">

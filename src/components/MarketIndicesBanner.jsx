@@ -4,17 +4,18 @@ import { formatCurrency, formatPercent, plClass } from '../lib/formatters';
 import { marketData } from '../marketData/marketData';
 
 const INDICES = [
-  { symbol: 'SPY', label: 'S&P 500' },
-  { symbol: 'QQQ', label: 'Nasdaq 100' },
+  { symbol: 'SPY', label: 'S&P 500', via: 'SPY ETF' },
+  { symbol: 'QQQ', label: 'Nasdaq 100', via: 'QQQ ETF' },
 ];
 
-function IndexTile({ label, symbol, quote }) {
+function IndexTile({ label, via, symbol, quote }) {
   const change = quote?.d;
   const changePct = quote?.dp;
 
   return (
     <Link to={`/stock/${symbol}`} className="indices-tile">
       <span className="indices-label">{label}</span>
+      <span className="indices-via">{via} · ETF price, not index level</span>
       <span className="indices-price tabular">{formatCurrency(quote?.c)}</span>
       <span className={`indices-change tabular ${plClass(change)}`}>
         {change != null ? `${change >= 0 ? '+' : ''}${formatCurrency(change, 2)}` : '—'}
@@ -62,9 +63,9 @@ export default function MarketIndicesBanner() {
   }, []);
 
   return (
-    <div className="indices-banner app-content" aria-label="Market indices">
-      {INDICES.map(({ symbol, label }) => (
-        <IndexTile key={symbol} symbol={symbol} label={label} quote={quotes[symbol]} />
+    <div className="indices-banner" aria-label="Market index ETFs">
+      {INDICES.map(({ symbol, label, via }) => (
+        <IndexTile key={symbol} symbol={symbol} label={label} via={via} quote={quotes[symbol]} />
       ))}
     </div>
   );
