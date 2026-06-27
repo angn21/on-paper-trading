@@ -1,8 +1,10 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import { fetchRemotePortfolio, saveRemotePortfolio } from '../lib/authApi';
 import {
+  buildMarketSnapshot,
   defaultPortfolioState,
   pickSyncPayload,
+  symbolsForPortfolio,
 } from '../lib/portfolioStorage';
 import { marketData } from '../marketData/marketData';
 import { useAuth } from './AuthContext';
@@ -12,14 +14,32 @@ const PortfolioSyncContext = createContext(null);
 const PULL_INTERVAL_MS = 15_000;
 
 function portfolioSymbols(state) {
-  const symbols = new Set([
-    ...Object.keys(state?.positions || {}),
-    ...(state?.options || []).map((o) => o.symbol),
-    ...(state?.watchlist || []),
-    ...(state?.pendingOrders || []).map((o) => o.symbol),
-    'SPY',
-  ]);
-  return [...symbols];
+  return symbolsForPortfolio(state);
+}
+
+function seedQuotesFromSnapshot(data, setQuote, setVolatility) {
+  const snapshot = data?.marketSnapshot;
+  if (!snapshot) return;
+
+  Object.entries(snapshot.quotes || {}).forEach(([symbol, quote]) => {
+    setQuote(symbol, {
+      c: quote.c,
+      d: 0,
+      dp: quote.dp ?? 0,
+      pc: quote.c,
+    });
+  });
+
+  Object.entries(snapshot.volatility || {}).forEach(([symbol, sigma]) => {
+    setVolatility(symbol, sigma);
+  });
+}
+
+function withMarketSnapshot(state, quotes, volatility) {
+  return {
+    ...pickSyncPayload(state),
+    marketSnapshot: buildMarketSnapshot(state, quotes, volatility),
+  };
 }
 
 function refreshMarketDataForPortfolio(state) {
@@ -42,7 +62,7 @@ function isRemoteNewer(remoteUpdatedAt, knownUpdatedAt) {
 
 export function PortfolioSyncProvider({ children }) {
   const { user, loading: authLoading } = useAuth();
-  const { portfolioState, replacePortfolioState, invalidateMarketQuotes } = usePortfolioContext();
+  const { portfolioState, replacePortfolioState, invalidateMarketQuotes, quotes, volatility, setQuote, setVolatility } = usePortfolioContext();
   const [syncReady, setSyncReady] = useState(false);
   const [cloudUpdatedAt, setCloudUpdatedAt] = useState(null);
   const [syncMessage, setSyncMessage] = useState('');
@@ -50,12 +70,16 @@ export function PortfolioSyncProvider({ children }) {
   const saveTimerRef = useRef(null);
   const lastSavedRef = useRef('');
   const portfolioRef = useRef(portfolioState);
+  const quotesRef = useRef(quotes);
+  const volatilityRef = useRef(volatility);
   const cloudUpdatedAtRef = useRef(null);
   const dirtyRef = useRef(false);
   const suppressDirtyRef = useRef(false);
   const hydratedRef = useRef(false);
 
   portfolioRef.current = portfolioState;
+  quotesRef.current = quotes;
+  volatilityRef.current = volatility;
 
   const applyRemoteState = useCallback((data, updatedAt) => {
     suppressDirtyRef.current = true;
@@ -63,12 +87,13 @@ export function PortfolioSyncProvider({ children }) {
     invalidateMarketQuotes();
     refreshMarketDataForPortfolio(data);
     replacePortfolioState(data);
+    seedQuotesFromSnapshot(data, setQuote, setVolatility);
     lastSavedRef.current = fingerprint(data);
     if (updatedAt) {
       cloudUpdatedAtRef.current = updatedAt;
       setCloudUpdatedAt(updatedAt);
     }
-  }, [invalidateMarketQuotes, replacePortfolioState]);
+  }, [invalidateMarketQuotes, replacePortfolioState, setQuote, setVolatility]);
 
   const pushToCloud = useCallback(async (payload) => {
     const serialized = JSON.stringify(payload);
@@ -110,7 +135,11 @@ export function PortfolioSyncProvider({ children }) {
 
     if (!remote) {
       if (localHasData && dirtyRef.current) {
-        const result = await pushToCloud(local);
+        const result = await pushToCloud(withMarketSnapshot(
+          portfolioRef.current,
+          quotesRef.current,
+          volatilityRef.current,
+        ));
         return { direction: 'push', ...result };
       }
       return { direction: 'none' };
@@ -124,7 +153,11 @@ export function PortfolioSyncProvider({ children }) {
     }
 
     if (dirtyRef.current) {
-      const result = await pushToCloud(local);
+      const result = await pushToCloud(withMarketSnapshot(
+        portfolioRef.current,
+        quotesRef.current,
+        volatilityRef.current,
+      ));
       return { direction: 'push', ...result };
     }
 
@@ -134,7 +167,11 @@ export function PortfolioSyncProvider({ children }) {
     }
 
     if (localHasData) {
-      const result = await pushToCloud(local);
+      const result = await pushToCloud(withMarketSnapshot(
+        portfolioRef.current,
+        quotesRef.current,
+        volatilityRef.current,
+      ));
       return { direction: 'push', ...result };
     }
 
@@ -146,7 +183,11 @@ export function PortfolioSyncProvider({ children }) {
     setSyncMessage('Syncing…');
     try {
       if (dirtyRef.current) {
-        await pushToCloud(pickSyncPayload(portfolioRef.current));
+        await pushToCloud(withMarketSnapshot(
+          portfolioRef.current,
+          quotesRef.current,
+          volatilityRef.current,
+        ));
         setSyncMessage('Saved to cloud.');
         return;
       }
@@ -224,7 +265,11 @@ export function PortfolioSyncProvider({ children }) {
 
     saveTimerRef.current = setTimeout(async () => {
       try {
-        await pushToCloud(payload);
+        await pushToCloud(withMarketSnapshot(
+          portfolioRef.current,
+          quotesRef.current,
+          volatilityRef.current,
+        ));
         setSyncMessage('Saved to cloud.');
       } catch {
         setSyncMessage('Cloud save failed — tap Sync now to retry.');
@@ -243,7 +288,11 @@ export function PortfolioSyncProvider({ children }) {
       if (!dirtyRef.current) return;
       if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
       try {
-        await pushToCloud(pickSyncPayload(portfolioRef.current));
+        await pushToCloud(withMarketSnapshot(
+          portfolioRef.current,
+          quotesRef.current,
+          volatilityRef.current,
+        ));
       } catch {
         // Retry on next change or manual sync.
       }
@@ -287,7 +336,11 @@ export function PortfolioSyncProvider({ children }) {
     syncMessage,
     syncNow,
     pullFromCloud: pullIfRemoteNewer,
-    pushToCloud: () => pushToCloud(pickSyncPayload(portfolioRef.current)),
+    pushToCloud: () => pushToCloud(withMarketSnapshot(
+      portfolioRef.current,
+      quotesRef.current,
+      volatilityRef.current,
+    )),
   };
 
   return (

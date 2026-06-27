@@ -8,6 +8,8 @@ import {
   loadLocalPortfolio,
   saveLocalPortfolio,
   sanitizePortfolioState,
+  resolveUnderlyingPrice,
+  resolveVolatility,
 } from '../lib/portfolioStorage';
 
 const defaultState = defaultPortfolioState;
@@ -443,7 +445,12 @@ export function PortfolioProvider({ children }) {
   const computed = useMemo(() => {
     const stockPositions = Object.entries(state.positions).map(([symbol, position]) => {
       const quote = quotes[symbol];
-      const price = quote?.c ?? position.avgCost;
+      const price = resolveUnderlyingPrice(
+        symbol,
+        quotes,
+        state.marketSnapshot,
+        () => position.avgCost,
+      );
       const marketValue = price * position.shares;
       const costBasis = position.avgCost * position.shares;
       const isShort = position.shares < 0;
@@ -460,8 +467,13 @@ export function PortfolioProvider({ children }) {
     });
 
     const optionPositions = state.options.map((position) => {
-      const underlying = quotes[position.symbol]?.c ?? seededFallbackPrice(position.symbol);
-      const sigma = volatility[position.symbol] ?? 0.3;
+      const underlying = resolveUnderlyingPrice(
+        position.symbol,
+        quotes,
+        state.marketSnapshot,
+        seededFallbackPrice,
+      );
+      const sigma = resolveVolatility(position.symbol, volatility, state.marketSnapshot);
       const pricing = priceOptionPosition(position, underlying, sigma);
       return { ...position, underlying, ...pricing };
     });

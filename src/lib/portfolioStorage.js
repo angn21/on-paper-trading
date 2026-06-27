@@ -10,7 +10,64 @@ export const defaultPortfolioState = {
   portfolioHistory: [],
   pendingOrders: [],
   benchmarkHistory: [],
+  marketSnapshot: { quotes: {}, volatility: {} },
 };
+
+export function symbolsForPortfolio(state) {
+  return [...new Set([
+    ...Object.keys(state?.positions || {}),
+    ...(state?.options || []).map((o) => o.symbol),
+    ...(state?.watchlist || []),
+    ...(state?.pendingOrders || []).map((o) => o.symbol),
+    'SPY',
+  ])];
+}
+
+export function sanitizeMarketSnapshot(raw) {
+  if (!raw || typeof raw !== 'object') {
+    return { quotes: {}, volatility: {} };
+  }
+
+  const quotes = {};
+  if (raw.quotes && typeof raw.quotes === 'object') {
+    Object.entries(raw.quotes).forEach(([symbol, quote]) => {
+      const upper = symbol.toUpperCase();
+      const price = Number(quote?.c);
+      if (price > 0) {
+        quotes[upper] = { c: price, dp: Number(quote?.dp) || 0 };
+      }
+    });
+  }
+
+  const volatility = {};
+  if (raw.volatility && typeof raw.volatility === 'object') {
+    Object.entries(raw.volatility).forEach(([symbol, value]) => {
+      const sigma = Number(value);
+      if (sigma > 0) volatility[symbol.toUpperCase()] = sigma;
+    });
+  }
+
+  return { quotes, volatility };
+}
+
+export function buildMarketSnapshot(state, quotes = {}, volatility = {}) {
+  const snapshot = { quotes: {}, volatility: {} };
+
+  symbolsForPortfolio(state).forEach((symbol) => {
+    const upper = symbol.toUpperCase();
+    if (quotes[upper]?.c) {
+      snapshot.quotes[upper] = {
+        c: quotes[upper].c,
+        dp: quotes[upper].dp ?? 0,
+      };
+    }
+    if (volatility[upper]) {
+      snapshot.volatility[upper] = volatility[upper];
+    }
+  });
+
+  return snapshot;
+}
 
 export function sanitizePortfolioState(raw) {
   if (!raw || typeof raw !== 'object') return { ...defaultPortfolioState };
@@ -24,6 +81,7 @@ export function sanitizePortfolioState(raw) {
     portfolioHistory: Array.isArray(raw.portfolioHistory) ? raw.portfolioHistory : [],
     pendingOrders: Array.isArray(raw.pendingOrders) ? raw.pendingOrders : [],
     benchmarkHistory: Array.isArray(raw.benchmarkHistory) ? raw.benchmarkHistory : [],
+    marketSnapshot: sanitizeMarketSnapshot(raw.marketSnapshot),
   };
 }
 
@@ -67,5 +125,23 @@ export function hasPortfolioActivity(state) {
 }
 
 export function pickSyncPayload(state) {
-  return sanitizePortfolioState(state);
+  const payload = sanitizePortfolioState(state);
+  return {
+    ...payload,
+    marketSnapshot: payload.marketSnapshot,
+  };
+}
+
+export function resolveUnderlyingPrice(symbol, liveQuotes, marketSnapshot, fallbackPrice) {
+  const upper = symbol.toUpperCase();
+  if (liveQuotes[upper]?.c) return liveQuotes[upper].c;
+  if (marketSnapshot?.quotes?.[upper]?.c) return marketSnapshot.quotes[upper].c;
+  return fallbackPrice(upper);
+}
+
+export function resolveVolatility(symbol, liveVolatility, marketSnapshot) {
+  const upper = symbol.toUpperCase();
+  if (liveVolatility[upper]) return liveVolatility[upper];
+  if (marketSnapshot?.volatility?.[upper]) return marketSnapshot.volatility[upper];
+  return 0.3;
 }
