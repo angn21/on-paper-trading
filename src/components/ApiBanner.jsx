@@ -14,9 +14,19 @@ export default function ApiBanner() {
       const mode = marketData.getMode();
       const reason = marketData.getFailureReason();
 
-      if (health === 'missing' || (mode === 'simulated' && reason === 'no_api_key')) {
+      // If live quotes work, don't show the config banner even if /api/health glitches.
+      if (health === 'configured' || mode === 'live') {
+        if (mode === 'simulated') {
+          setMessage('Live market data unavailable — using simulated prices for now.');
+        } else {
+          setMessage('');
+        }
+        return;
+      }
+
+      if (health === 'missing' || reason === 'no_api_key') {
         setMessage(
-          'Market data server not configured — using simulated prices. Set FINNHUB_API_KEY on the server (see README).',
+          'Market data server not configured — using simulated prices. In Vercel, set FINNHUB_API_KEY for Production and redeploy.',
         );
         return;
       }

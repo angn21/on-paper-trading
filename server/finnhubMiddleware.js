@@ -1,4 +1,4 @@
-import { proxyFinnhubRequest } from './finnhubProxy.js';
+import { proxyFinnhubRequest } from '../api/_lib/finnhubProxy.js';
 
 /**
  * Vite dev-server middleware — mirrors the Vercel /api/finnhub route locally.

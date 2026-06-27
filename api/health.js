@@ -1,6 +1,6 @@
-import { getFinnhubKey } from '../../server/finnhubProxy.js';
+import { getFinnhubKey } from '../_lib/finnhubProxy.js';
 
 export default function handler(_req, res) {
   const configured = Boolean(getFinnhubKey());
-  return res.status(200).json({ marketData: configured ? 'configured' : 'missing' });
+  res.status(200).json({ marketData: configured ? 'configured' : 'missing' });
 }

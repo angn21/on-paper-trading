@@ -288,7 +288,10 @@ async function withFallback(liveFn, simFn, cacheKey) {
 export async function checkMarketDataHealth() {
   try {
     const response = await fetch('/api/health');
-    if (!response.ok) return 'missing';
+    const contentType = response.headers.get('content-type') || '';
+    if (!response.ok || !contentType.includes('application/json')) {
+      return 'missing';
+    }
     const data = await response.json();
     return data.marketData === 'configured' ? 'configured' : 'missing';
   } catch {

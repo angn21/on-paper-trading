@@ -1,8 +1,9 @@
-import { proxyFinnhubRequest } from '../../server/finnhubProxy.js';
+import { proxyFinnhubRequest } from '../_lib/finnhubProxy.js';
 
 export default async function handler(req, res) {
   if (req.method !== 'GET') {
-    return res.status(405).json({ error: 'Method not allowed' });
+    res.status(405).json({ error: 'Method not allowed' });
+    return;
   }
 
   const slug = req.query.slug;
@@ -15,5 +16,5 @@ export default async function handler(req, res) {
   });
 
   const result = await proxyFinnhubRequest(path, params);
-  return res.status(result.status).json(result.body);
+  res.status(result.status).json(result.body);
 }
