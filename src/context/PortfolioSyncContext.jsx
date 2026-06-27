@@ -1,8 +1,9 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import { fetchRemotePortfolio, saveRemotePortfolio } from '../lib/authApi';
 import {
-  buildMarketSnapshot,
+  buildSyncSnapshot,
   defaultPortfolioState,
+  needsSnapshotBackfill,
   pickSyncPayload,
   symbolsForPortfolio,
 } from '../lib/portfolioStorage';
@@ -32,32 +33,35 @@ function seedQuotesFromSnapshot(data, setQuote, setVolatility) {
 }
 
 async function prepareSyncPayload(state, quotes, volatility, setQuote, setVolatility) {
-  let mergedQuotes = { ...quotes };
-  let mergedVol = { ...volatility };
-  let snapshot = buildMarketSnapshot(state, mergedQuotes, mergedVol);
+  const mergedQuotes = { ...quotes };
+  const mergedVol = { ...volatility };
   const symbols = symbolsForPortfolio(state);
-  const missing = symbols.filter((symbol) => !snapshot.quotes[symbol.toUpperCase()]?.c);
 
-  if (missing.length) {
-    await Promise.all(
-      missing.map(async (symbol) => {
-        const upper = symbol.toUpperCase();
-        try {
-          const [quote, sigma] = await Promise.all([
-            marketData.getQuote(upper),
-            marketData.getVolatility(upper),
-          ]);
-          mergedQuotes = { ...mergedQuotes, [upper]: quote };
-          mergedVol = { ...mergedVol, [upper]: sigma };
-          setQuote(upper, quote);
-          setVolatility(upper, sigma);
-        } catch {
-          // Partial snapshot is still better than none.
-        }
-      }),
-    );
-    snapshot = buildMarketSnapshot(state, mergedQuotes, mergedVol);
+  for (const symbol of symbols) {
+    const upper = symbol.toUpperCase();
+
+    if (!mergedQuotes[upper]?.c) {
+      try {
+        const quote = await marketData.getQuote(upper);
+        mergedQuotes[upper] = quote;
+        setQuote(upper, quote);
+      } catch {
+        // Try next symbol.
+      }
+    }
+
+    if (!mergedVol[upper]) {
+      try {
+        const sigma = await marketData.getVolatility(upper);
+        mergedVol[upper] = sigma;
+        setVolatility(upper, sigma);
+      } catch {
+        // Try next symbol.
+      }
+    }
   }
+
+  const snapshot = buildSyncSnapshot(state, mergedQuotes, mergedVol);
 
   return {
     ...pickSyncPayload(state),
@@ -65,15 +69,12 @@ async function prepareSyncPayload(state, quotes, volatility, setQuote, setVolati
   };
 }
 
-function needsSnapshotBackfill(state) {
-  const symbols = symbolsForPortfolio(state);
-  if (!symbols.length) return false;
-  const snap = state?.marketSnapshot?.quotes || {};
-  return symbols.some((symbol) => !snap[symbol.toUpperCase()]?.c);
-}
-
 function fingerprint(state) {
   return JSON.stringify(pickSyncPayload(state));
+}
+
+function snapshotHasMarks(snapshot) {
+  return Object.keys(snapshot?.quotes || {}).length > 0;
 }
 
 function isDefaultPortfolio(state) {
@@ -120,16 +121,20 @@ export function PortfolioSyncProvider({ children }) {
     }
   }, [pauseQuoteRefresh, replacePortfolioState, setQuote, setVolatility]);
 
-  const pushToCloud = useCallback(async () => {
+  const pushToCloud = useCallback(async (stateOverride = null) => {
+    const state = stateOverride ?? portfolioRef.current;
     const payload = await prepareSyncPayload(
-      portfolioRef.current,
+      state,
       quotesRef.current,
       volatilityRef.current,
       setQuote,
       setVolatility,
     );
     const serialized = JSON.stringify(payload);
-    if (serialized === lastSavedRef.current) {
+    const forceSnapshotPush = snapshotHasMarks(payload.marketSnapshot)
+      && needsSnapshotBackfill(state);
+
+    if (serialized === lastSavedRef.current && !forceSnapshotPush) {
       dirtyRef.current = false;
       return { ok: true, skipped: true };
     }
@@ -191,7 +196,7 @@ export function PortfolioSyncProvider({ children }) {
     if (!serverEmpty) {
       applyRemoteState(remote.data, remote.updatedAt);
       if (needsSnapshotBackfill(remote.data)) {
-        const result = await pushToCloud();
+        const result = await pushToCloud(remote.data);
         return { direction: 'backfill', ...result };
       }
       return { direction: 'pull', updatedAt: remote.updatedAt };
@@ -221,7 +226,7 @@ export function PortfolioSyncProvider({ children }) {
       if (!isDefaultPortfolio(remote.data)) {
         applyRemoteState(remote.data, remote.updatedAt);
         if (needsSnapshotBackfill(remote.data)) {
-          await pushToCloud();
+          await pushToCloud(remote.data);
           setSyncMessage('Synced prices to cloud.');
           return;
         }

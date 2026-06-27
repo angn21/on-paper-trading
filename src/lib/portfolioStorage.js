@@ -81,6 +81,38 @@ export function buildMarketSnapshot(state, quotes = {}, volatility = {}) {
   return snapshot;
 }
 
+/** Snapshot for cloud sync — always capture current marks, including simulated fallbacks. */
+export function buildSyncSnapshot(state, quotes = {}, volatility = {}) {
+  const snapshot = { quotes: {}, volatility: {} };
+
+  symbolsForPortfolio(state).forEach((symbol) => {
+    const upper = symbol.toUpperCase();
+    const live = quotes[upper];
+
+    if (live?.c > 0) {
+      snapshot.quotes[upper] = { c: live.c, dp: live.dp ?? 0 };
+    }
+    if (volatility[upper] > 0) {
+      snapshot.volatility[upper] = volatility[upper];
+    }
+  });
+
+  return snapshot;
+}
+
+export function needsSnapshotBackfill(state) {
+  const symbols = symbolsForPortfolio(state);
+  if (!symbols.length) return false;
+
+  const quotes = state?.marketSnapshot?.quotes || {};
+  const vol = state?.marketSnapshot?.volatility || {};
+
+  return symbols.some((symbol) => {
+    const upper = symbol.toUpperCase();
+    return !quotes[upper]?.c || !vol[upper];
+  });
+}
+
 export function sanitizePortfolioState(raw) {
   if (!raw || typeof raw !== 'object') return { ...defaultPortfolioState };
 
